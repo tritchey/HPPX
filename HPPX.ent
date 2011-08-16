@@ -1,0 +1,4 @@
+<!ENTITY nextstep '<systemitem class="osname">NeXTStep</systemitem>'>
+<!ENTITY os9 '<systemitem class="osname">MacOS 9</systemitem>'>
+<!ENTITY osx '<systemitem class="osname">OS X</systemitem>'>
+<!ENTITY cocoa '<classname>Cocoa</classname>'>

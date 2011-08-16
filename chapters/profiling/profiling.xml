@@ -1,0 +1,85 @@
+<chapter id="PROF">
+	<title>Profiling</title>
+
+<sect1>
+	<title>Why Profile?</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Basic Profiling Tools</title>
+	
+	<para>Here's a handy function to get millisecond accurate timestamps using the kernel UpTime() function, which avoids the overhead of NSDate.
+<programlisting>
+<![CDATA[
+#import <DriverServices.h>
+unsigned int UpTimeInMilliseconds()
+{
+	unsigned int result;
+	Nanoseconds n = AbsoluteToNanoseconds(UpTime());
+	unsigned long long int i = n.hi;
+	i <<= 32;
+	i += n.lo;
+	i /= 1000000;
+	result = i;
+	return result;
+}
+]]>
+</programlisting>
+
+See also the documentation at MP.97.html (search for "UpTime" documentation in Project Builder) for more code to create very accurate timestamps.</para>
+	
+	<sect2>
+		<title><command>top</command></title>
+<para>If you use "top -d" (or "top -ud"), Darwin's top won't consume that many cycles either (it's still slightly more than under the other OS'es though). It's the gathering of memory statistics that consumes so much time. On darwin-development, Apple engineers also always say this is because traversing the mach memory maps is a lot of work. Maybe the memory mapping under FreeBSD (and Linux) is in fact much simpler than under mach... Anyway, the source of all things involved is available, so nothing prevents you from finding out what the real cause is (except for time, probably :)</para>
+	</sect2>
+	
+	
+	
+	<sect2>
+		<title>Sampler</title>
+		<para>todo</para>
+	</sect2>
+	<sect2>
+		<title>QuartzDebug</title>
+		<para>todo</para>
+	</sect2>	
+	<sect2>
+		<title>Looking Forward</title>
+		
+<para>We will look at programs such as ThreadViewer, MallocDebug and ObjecAlloc, as 
+Well as OmniGroup's ObjectMeter in later chapters as we discuss the programming areas 
+that they touch upon.</para>
+
+	</sect2>
+
+</sect1>
+
+<sect1>
+	<title>Advanced Profiling Tools</title>
+	<para>todo</para>
+	<sect2>
+		<title>CHUD Kernel Extensions</title>
+		<para>todo</para>
+	</sect2>
+	<sect2>
+		<title>Using Sharkiri</title>
+		<para>todo</para>
+	</sect2>
+	<sect2>
+		<title>MONster</title>
+		<para>todo</para>
+	</sect2>
+</sect1>
+
+<sect1>
+	<title>Sample Profiling Cases</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Detecting Anti-patterns</title>
+	<para>todo</para>
+</sect1>
+
+</chapter>

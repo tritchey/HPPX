@@ -1,0 +1,1715 @@
+<chapter id="BVEC">
+	<title>Basic Vector Programming</title>
+	
+<sect1>
+	<title>TODO</title>
+
+<programlisting>
+<![CDATA[
+<ulink url="http://arstechnica.infopop.net/OpenTopic/page?a=tpc&s=50009562&f=8300945231&m=8790959504">AltiVec discussion at ars</ulink>
+]]>
+</programlisting>
+
+</sect1>
+	
+<sect1>
+	<title>Introduction to Vectorization</title>
+	
+<para>Modern processors have come a long way in closing the gap historically present between custom supercomputers and desktop PCs. Pipelining, super-scalar architectures, reduced-instruction-set-computing, and other advances once the sole purview of extremely expensive hardware, are now integrated into almost every microprocessor in one form or another. Most of these advances have been introduced in order to speed the execution of general-purpose applications, and do not  require explicit support from either the programmer, or in many cases, even the compiler. In a sense, we benefit from these faster processors for free--simply run your existing code on the new processors, perhaps with only a simple re-compile, and watch the seconds, minutes, or even hours fall off your execution time.</para>
+
+<para>Unfortunately, these techniques, while impressive, can only take us so far. Personal computers have moved from devices almost solely used in business environments for word-processing and spreadsheets to machines used as media, gaming and, more importantly for our discussion here, scientific and engineering workstation platforms. These new applications all benefit from a different kind of processor optimization. What all of these applications have in common is their dependence on tight loops of code that perform identical operations repeatedly on a large set of data. It doesn't matter if these data are pixels destined for a 3D scene in Quake III, video streams in an MPEG movie, or vector fields in a fluid dynamics simulation of a nuclear explosion.</para>
+
+<para>One operation typical of these kinds of applications is computing the dot product of two vectors <literal>a</literal> and <literal>b</literal>:</para>
+
+<programlisting>
+<![CDATA[
+\[
+	c = \sum_{i=0}^{n-1} a_i b_i
+\]
+]]>
+</programlisting>
+
+<para>If for the sake of argument we ignore some of the techniques presented in previous chapters (e.g. loop unrolling), we might naively implement the equation above for a fixed, four-element vector in C as follows:</para>
+
+<programlisting>
+<![CDATA[
+float dot_product(float *a, float *b) 
+{
+    float c = 0.0;
+    int i = 0;
+
+    for(i = 0; i < 4; ++i) {
+        c += a[i]*b[i];
+    }
+
+    return c;
+}
+]]>
+</programlisting>
+
+<para><xref linkend="BVP:scalar_dot_product"/> shows graphically how the <function>dot_product</function> function works through one element of the vector at a time, multiplying each element from vector <literal>a</literal> with its corresponding element from vector <literal>b</literal>, and then adding this value to <literal>c</literal>. In this figure, time moves vertically down the page, and all operations together on a horizontal line occur at the same time.</para>
+
+<figure id="BVP:scalar_dot_product">
+	<title>Order of Instruction Execution for Scalar Implementation of Dot Product</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/bvector/figures/scalar_dot_product.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>I compiled the <function>dot_product</function> function using <literal>-O3</literal> optimization, and then looked at the assembly code in <command>gdb</command> using the <computeroutput><prompt>(gdb)</prompt> <userinput>disass dot_product</userinput></computeroutput> command. (See <xref linkend="PROC"/> for information on this, and other useful commands). The five most important lines from the output have been presented below. These instructions implement the <literal>for</literal> loop that performs the actual dot product evaluation:</para>
+
+<programlisting>
+<![CDATA[
+0x1dfc <dot_product+40>:        lfsx    f13,r9,r3
+0x1e00 <dot_product+44>:        lfsx    f0,r9,r4
+0x1e04 <dot_product+48>:        addi    r9,r9,4
+0x1e08 <dot_product+52>:        fmadds  f1,f13,f0,f1
+0x1e0c <dot_product+56>:        bdnz    0x1dfc <dot_product+40>
+]]>
+</programlisting>
+
+<para>This dot product implementation requires five instructions for every element in the vector. The miscellaneous housekeeping instructions before and after the loop are not shown here. Notice the <function>fmadds</function> instruction. This opcode performs both a multiply and an add at once. This operation is represented in Figure <xref linkend="BVP:scalar_dot_product"/> in that the add, multiply and assignment are all shown horizontally together. The other four instructions fill the registers with the vector elements needed by the <function>fmadds</function> instruction (<function>lfsx</function>), as well as check for when it is time to exit out of the loop (<function>bdnz</function>). Computing the dot product for a four element vector one hundred million times using this routine takes approximately 3.87 seconds on my 500MHz G4.</para>
+
+	<sect2>
+		<title>An AltiVec Dot Product</title>
+
+<para>Below is an implementation of the same dot product operation, this time using the G4's AltiVec engine.</para>
+
+<programlisting>
+<![CDATA[
+float altivec_dot_product(vector float a, vector float b) 
+{
+    vector float zero = (vector float) vec_splat_s8(0);
+    vector float tmp;
+    float c;
+    int i;
+
+    tmp = vec_madd(a, b, zero);
+    tmp = vec_add( tmp, vec_sld( tmp, tmp, 4));
+    tmp = vec_add( tmp, vec_sld( tmp, tmp, 8));
+    
+    vec_ste(tmp, 0, &c);
+    return c;
+}
+]]>
+</programlisting>
+
+<para>As you can immediately see, implementing an algorithm in AltiVec is not a straightforward affair and often does not follow the conventions programmers are familiar with when programming for the scalar arithmetic units of most processors. First, notice that instead of taking pointers to floats as its arguments, the AltiVec version expects a <type>vector float</type>. The vector engine, not surprisingly, works on <emphasis>vectors</emphasis>. The <type>vector float</type> you see here is one example of an AltiVec vector. In this case, a <type>vector float</type> holds four single-precision floating-point values. Second, notice there is <emphasis>no loop</emphasis>. The fused multiply-add operation <function>vec_madd</function> takes in the entire vectors <varname>a</varname> and <varname>b</varname>, as well as (in this case) a <varname>0</varname> vector. The multiply-add instruction operates on every element of each vector at once. <xref linkend="BVP:vec_madd"/> shows how the individual components of the vectors are used to compute the final result.</para>
+
+<figure id="BVP:vec_madd">
+	<title>The <function>vec_madd</function> AltiVec Instruction</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/bvector/figures/vec_madd.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>This idea of operating on multiple data points--a vector of four floats--with a single instruction--the <function>vec_madd</function> call--is the core concept behind the AltiVec engine, and vector machines in general. This computing model has its own acronym called SIMD, or Single Instruction, Multiple Data. Contrast this approach to our first dot product implementation, where every element in the first vector had to be individually multiplied with its corresponding element in the second vector. This more traditional approach taken by the arithmetic units of most processors is known as SISD: Single Instruction, Single Data. We also refer to the traditional arithmetic unit in this text as the <emphasis>scalar</emphasis> unit to distinguish it from the <emphasis>vector</emphasis> AltiVec unit.</para>
+
+<para>If the <function>vec_madd</function> instruction is a good example of the benefits of vectorized programming, the next lines in the AltiVec dot product are a good example of one of the down-sides. The two lines in the AltiVec implementation after <function>vec_madd</function> add up the four resulting floats held in <varname>tmp</varname> for the final dot product solution. Unfortunately, the AltiVec implementation does not provide a single instruction for adding up the individual components of a float vector together--that is $c = a_0 + a_1 + a_2 + a_3$. There is one for integers, but not for floating-point numbers. The two <function>vec_add</function> with embedded <function>vec_sld</function> calls are one way of producing the sum. This is an example of the kinds of hacks that are typical with AltiVec optimizations. In this chapter and the next we will take a closer look at this, and other interesting ways of getting things done with AltiVec.</para>
+
+<para>As with the scalar implementation of the dot product, let's take a look at the assembly generated by the compiler for the AltiVec dot product. The equivalent assembly in <function>altivec_dot_product</function> for the <literal>for</literal> loop in the scalar <function>dot_product</function> function is:</para>
+
+<programlisting>
+<![CDATA[
+0x2d84 <altivec_dot_product+24>:        vmaddfp v3,v2,v3,v1
+0x2d88 <altivec_dot_product+28>:        vsldoi  v0,v3,v3,4
+0x2d8c <altivec_dot_product+32>:        vaddfp  v3,v3,v0
+0x2d90 <altivec_dot_product+36>:        vsldoi  v1,v3,v3,8
+0x2d94 <altivec_dot_product+40>:        vaddfp  v3,v3,v1
+]]>
+</programlisting>
+
+<para>Like the scalar implementation, the assembly amounts to five instructions, with one important difference: where the scalar dot product implementation had to go through the loop four times--once for every element in the array, the AltiVec implementation only requires five instructions for the <emphasis>entire</emphasis> computation. You can see in the assembly output that the opcodes match very closely with the function calls in the C source code. In fact, while programming AltiVec from C parses as function calls, the programming model is significantly different. We will look more closely at how AltiVec programming in C is implemented in the next section.</para>
+
+<tip>
+<para>One issue with looking at the assembly for altivec code is that <command>gdb</command> does not always give you the opcode mnemonic you are expecting. The first operation: <function>vmaddfp v3,v2,v3,v1</function> actually prints out in <command>gdb</command> as <computeroutput>.long 0x106208ee</computeroutput>. Appendix B of Motorola's <quote>AltiVec Technology Programming Environments Manual</quote> provides the binary representation of all the AltiVec instructions, so you can figure out what instruction is being executed, as well as what registers are being used. See Section <xref linkend="BVP:references"/> at the end of the chapter for references to the Motorola documentation</para>
+</tip>
+
+<figure id="BVP:altivec_dot_product">
+	<title>Order of Instruction Execution for AltiVec Implementation of Dot Product</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/altivec_dot_product.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para><xref linkend="BVP:altivec_dot_product"/> shows how the vectorized dot product implementation moves through the AltiVec engine. This implementation of the dot product takes approximately 2.24 seconds to complete one hundred million times on a 500MHz G4. This is a 42% improvement over the time required for the traditional scalar implementation of the dot product. We have almost cut our time to execute a dot product in half!</para>
+	</sect2>
+
+	<sect2>
+		<title>Now for the Real World</title>
+
+<para>Given these numbers, I'm sure you are ready to start rewriting all of your code to take advantage of the AltiVec engine. In fact, instead of preparing for a massive hacking session, you might instead be asking yourself: if both implementations have the same number of assembly instructions, but the scalar version has to execute its version four times to complete the algorithm, why isn't the AltiVec version four times faster instead of less than two? It turns out that while the two dot product implementations make for relatively good examples of scalar versus vector programming, they are not really very good at getting the most out the PowerPC hardware. Unfortunately, the dot product example eschews a little practical reality for the sake of pedagogy.</para>
+
+<para>In the case of the scalar dot product, placing a <literal>for</literal> loop in the code when we know we are working with a fixed four-element vector isn't really that smart. Instead of reprogramming for AltiVec, we could have simply unrolled the loop:</para>
+
+<programlisting>
+<![CDATA[
+float dot_product(float *a, float *b) 
+{
+    float c = 0.0;
+
+    c += a[0] * b[0];
+    c += a[1] * b[1];
+    c += a[2] * b[2];
+    c += a[3] * b[3];
+    
+    return c;
+}
+]]>
+</programlisting>
+
+<para>If we fix this glaring issue, things suddenly take a turn for the worse. The scalar dot product implementation completes in 2.45 seconds - a 37\% improvement over its looping brethren. The AltiVec version has gone from dropping 42\% off of the scalar time, to just nudging it out by 9\%! Suddenly, that overnight hacking fest to wrangle your code into using AltiVec doesn't sound like such a good use of your limited resources. Surely, these aren't the heart-pounding numbers we were expecting from AltiVec. What are we doing wrong?</para>
+
+<para>It turns out that while the AltiVec engine can dispatch operations on entire vectors at once, it doesn't actually <emphasis>complete</emphasis> them in once cycle. Depending on the instruction, it can take from one to five clock cycles for the AltiVec engine to complete an operation. To make sure we are not spinning our wheels waiting for the first instruction to complete, the AltiVec engine can start additional operations, as long as they do not depend upon the result of any pending operations. In the case of our dot product code, every call to the AltiVec engine depended upon the previous call. This meant our function was stalling between instructions. <function>vec_madd</function> and <function>vec_add</function> both require 4 cycles to complete. By stacking one operation on top of another with interdependencies, we were causing the AltiVec engine to stall. The following code shows how we might overcome this problem:</para>
+
+<programlisting>
+<![CDATA[
+vfloat altivec_dot_product(vector float *a, vector float *b)
+{
+    vfloat result;
+    vector float zero = (vector float) vec_splat_s8(0);
+    vector float tmp1, tmp2, tmp3, tmp4;
+
+    tmp1 = vec_madd(a[0], b[0], zero);
+    tmp2 = vec_madd(a[1], b[1], zero);
+    tmp3 = vec_madd(a[2], b[2], zero);
+    tmp4 = vec_madd(a[3], b[3], zero);
+    tmp1 = vec_add( tmp1, vec_sld( tmp1, tmp1, 4));
+    tmp2 = vec_add( tmp2, vec_sld( tmp2, tmp2, 4));
+    tmp3 = vec_add( tmp3, vec_sld( tmp3, tmp3, 4));
+    tmp4 = vec_add( tmp4, vec_sld( tmp4, tmp4, 4));
+    tmp1 = vec_add( tmp1, vec_sld( tmp1, tmp1, 8));
+    tmp2 = vec_add( tmp2, vec_sld( tmp2, tmp2, 8));
+    tmp3 = vec_add( tmp3, vec_sld( tmp3, tmp3, 8));
+    tmp4 = vec_add( tmp4, vec_sld( tmp4, tmp4, 8));
+    
+    vec_ste(tmp1, 3, &(result.e[0]));
+    vec_ste(tmp2, 3, &(result.e[0]));
+    vec_ste(tmp3, 3, &(result.e[0]));
+    vec_ste(tmp4, 3, &(result.e[0]));
+
+    return result;
+}
+]]>
+</programlisting>
+
+<para>Instead of passing in two vectors <varname>a</varname> and <varname>b</varname>, we are passing in an array of vectors. In this case, we are assuming that <varname>a</varname> and <varname>b</varname> both hold four <type>vector float</type> values. Notice how we have interleaved the operations for computing the dot products for each vector. First, we send off all four pairs of vectors to be multiplied, then we perform both shift/add combinations. By interleaving the operations, we ensure that the AltiVec engine has plenty of work to do. Table <xref linkend="BVP:naive_opt"/> shows the new times for both our naive and optimized implementations.</para>
+
+<table id="BVP:naive_opt">
+	<title>Naive vs. Optimized Dot Product Implementations</title>
+	<tgroup cols="3">
+	<thead>
+	<row>
+		<entry></entry>
+		<entry>Naive</entry>
+		<entry>Optimized</entry>
+	</row>
+	</thead>
+	<tbody>
+	<row><entry>Scalar:</entry><entry>3.87s</entry><entry>2.45s</entry></row>
+	<row><entry>AltiVec:</entry><entry>2.24s</entry><entry>0.56s</entry></row>
+	</tbody>
+	</tgroup>
+</table>
+
+
+<para>By making sure the AltiVec pipeline is full, we are able to get a four to one reduction in computation time over the naive AltiVec version, and 4.4 times faster than the unrolled scalar dot product. This is almost exactly what we would expect from an execution unit that works on four floating-point values at one time. As with any benchmark, your mileage may vary. These numbers do not take into account function call overhead, and they exercise their respective execution units using only a very small amount of data, which means that hardware limitations such as memory bandwidth do not impact these results. Working with AltiVec can be difficult, but for the right kinds of problems, the rewards can be well worth it. </para>
+
+<para>Hopefully this introduction to AltiVec has given you an idea of both the upside potential, and downside issues related to optimizing your code for AltiVec. The rest of this chapter will focus on familiarizing you with the AltiVec programming model, keywords and functions so that you can starting thinking about how you might reimplement algorithms to take advantage of AltiVec. The next chapter will start looking at more advanced AltiVec issues, such as optimization issues and available libraries.</para>
+</sect2>
+</sect1>
+<sect1>
+	<title>The AltiVec Engine</title>
+
+<para>Up to this point, we have ignored many of the implementation specific aspects of programming for AltiVec in order to stress the overall issues related to programming for vector engines. It is now time to start looking at the specifics of programming for AltiVec and OSX.</para>
+
+<para>The AltiVec engine, or <emphasis>Velocity Engine</emphasis> in Apple terms, is a third Arithmetic Logic Unit (ALU) added to the PowerPC architecture, in addition to the traditional integer and floating-point units, that operates on 128-bit wide vectors (see Figure <xref linkend="BVP:altivec_architecture"/>). The vector unit (VU) itself is comprised of several different sub-units that are able to operate concurrently such as the vector permute unit (VPERM) and the vector arithmetic logical unit (VALU). We will discuss these different units when we talk about the different AltiVec operations in this chapter, as well as in the next chapter when we discuss optimization techniques. In addition to the vector unit, the AltiVec engine provides an additional set of registers called the Vector Register File (VRF). This VRF provides 32 128-bit registers for use by the Vector Unit.</para>
+
+<figure id="BVP:altivec_architecture">
+	<title>AltiVec \texttt{vector</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/bvector/figures/altivec_architecture.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Motorola has added a host of new instructions for the PowerPC architecture to support the AltiVec unit. The <quote>AltiVec Technology Programming Environments Manual</quote> provides a detailed description of this low-level method of programming for AltiVec (see Section <xref linkend="BVP:references"/>). In order to facilitate higher-level language adoption, Motorola has also specified a C/C++ language interface for the AltiVec engine that has been spelled out in the <quote>AltiVec Technology Programming Interface Manual.</quote> Both of these manuals are important references that you will want to have handy. They both come as bookmarked PDF, so are easy to keep open and search while you are working on a project without taking up real-world deskspace.</para>
+
+<para>While optimizing functions with hand-tuned assembly is almost considered a rite-of-passage to some, we are going to focus on the C interface. The high-level language interface creates a number of new language extensions for supporting the wider types, as well as built-in function calls to support the new AltiVec operations. As you saw in the examples we have already shown, the new altivec instructions fit in very nicely with more familiar C programming, saving you from having to intersperse your code with <function>asm()</function> calls.</para>
+
+	<sect2>
+		<title>Using AltiVec in ProjectBuilder</title>
+
+<para>Apple's developer tools have built-in support for the C AltiVec programming interface. By default, this feature is not turned on when you create a new project using <application>ProjectBuilder</application>}. To turn on AltiVec, under the <guilabel>Targets</guilabel> tab, choose the target, which is typically the name of your project, then, choose the <guilabel>Build Settings</guilabel> tab. Down this page is the <guilabel>Compiler Settings</guilabel> section, select the <guilabel>Other Compiler Flags</guilabel> field, and add <literal>-faltivec</literal>. If you are working from the command line, simply add the <literal>-faltivec</literal> option when you run <command>cc</command>. Figure <xref linkend="BVP:faltivec_flag"/> shows where to set the <literal>-faltivec</literal> flag in <application>ProjectBuilder</application>.</para>
+
+<tip>
+<para><computeroutput>illegal statement, missing `;' after `vector'</computeroutput>. If you find that <application>ProjectBuilder</application> is giving you this error, followed by: <computeroutput>`vector' undeclared</computeroutput> at the point in your code where you are using the <type>vector</type> keyword then you have forgotten to turn on AltiVec in the compiler settings.</para>
+</tip>
+
+<para>Since the AltiVec extensions to C and C++ are defined at the compiler level, once you give <command>cc</command> the right flags, you are ready to start using AltiVec. You don't need to link with any special libraries or frameworks.</para>
+
+<figure id="BVP:faltivec_flag">
+	<title>Setting the <literal>-faltivec</literal></title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/faltivec_flag.tif" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+	</sect2>
+	<sect2>
+		<title>AltiVec Types</title>
+
+<para>AltiVec defines a number of new <type>vector</type> types in C. These ar bonafide types, and not simply typedefs or macros to structures. <xref linkend="BVP:c_altivec_types"/> enumerates the different possible type combinations available with AltiVec.</para>
+
+<table id="BVP:c_altivec_types">
+	<title>C AltiVec Types</title>
+	<tgroup cols="3">
+	<thead>
+	<row>
+		<entry>Type</entry>
+		<entry>Count</entry>
+		<entry>Range</entry>
+	</row>
+	</thead>
+	<tbody>
+	<row>
+		<entry><type>vector unsigned char</type></entry>
+		<entry>16</entry>
+		<entry>0...255</entry>
+	</row>
+	<row>
+		<entry><type>vector signed char</type></entry>
+		<entry>16</entry>
+		<entry>-128...127</entry>
+	</row>
+	<row>
+		<entry><type>vector bool char</type></entry>
+		<entry>16</entry>
+		<entry>0 (false), 255 (true)</entry>
+	</row>
+	<row>
+		<entry><type>vector unsigned short</type></entry>
+		<entry>8</entry>
+		<entry>0...65536$</entry>
+	</row>
+	<row>
+		<entry><type>vector unsigned short int</type></entry>
+		<entry></entry>
+		<entry></entry>
+	</row>
+	<row>
+		<entry><type>vector signed short</type></entry>
+		<entry>8</entry>
+		<entry>-32768...32767</entry>
+	</row>
+	<row>
+		<entry><type>vector signed short int</type></entry>
+		<entry></entry>
+		<entry></entry>
+	</row>
+	<row>
+		<entry><type>vector bool short</type></entry>
+		<entry>8</entry>
+		<entry>0 (false), 65535 (true)</entry>
+	</row>
+	<row>
+		<entry><type>vector bool short int</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector unsigned int</type></entry>
+		<entry>4</entry>
+		<entry>0...2^{32} - 1</entry>
+	</row>
+	<row>
+		<entry><type>vector unsigned long</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector unsigned long int</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector signed int</type></entry>
+		<entry>4</entry>
+		<entry>-2^{31}...2^{31} - 1</entry>
+	</row>
+	<row>
+		<entry><type>vector signed long</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector signed long int</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector bool int</type></entry>
+		<entry>4</entry>
+		<entry>0 (false), 2^{32} - 1 (true)</entry>
+	</row>
+	<row>
+		<entry><type>vector bool long</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector bool long int</type></entry>
+		<entry> </entry>
+		<entry> </entry>
+	</row>
+	<row>
+		<entry><type>vector float</type></entry>
+		<entry>4</entry>
+		<entry>IEEE-754 Values</entry>
+	</row>
+	<row>
+		<entry><type>vector pixels</type></entry>
+		<entry>4</entry>
+		<entry>1/5/5/5 pixel</entry>
+	</row>	
+	</tbody>
+	</tgroup>
+</table>
+
+
+	
+<figure id="BVP:altivec_vector_org">
+	<title>AltiVec \texttt{vector</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/bvector/figures/altivec_types.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>All AltiVec vectors are 128bits wide, which allows for a varying number of component elements in each vector depending upon their type. Figure <xref linkend="BVP:altivec_vector_org"/> shows how different sized vector components are organized in memory. Table <xref linkend="BVP:c_altivec_types"/>'s <emphasis>Count</emphasis> column indicates how many elements of each type a vector can store.</para>
+
+
+<para>Just like normal types, you can use pointers to vectors:</para>
+
+<programlisting>
+<![CDATA[
+vector float vf;
+vector float *pvf = &vf;
+]]>
+</programlisting>
+
+
+	<sect3>
+		<title>Literals</title>
+
+<para>The AltiVec programming interface supports a vector literal that can be used to initialize vectors, or as constant expressions in executable statements. <xref linkend="BVP:literals"/> shows the different formats for vector literals. There are two forms for every literal expression. One form takes a single constant in parenthesis, which is then copied into every element in the vector. The second vector literal form expects a comma separated list of constants. There should be the same number of elements in the list as can be held in the vector of that type.</para>
+
+
+
+<table id="BVP:literals">
+	<title>AltiVec Literals</title>
+	<tgroup cols="1">
+	<thead>
+	<row><entry>Vector Literal Format</entry></row>
+	</thead>
+	<tbody>
+	<row><entry><literal>(vector unsigned char) (unsigned int)</literal></entry></row>
+	<row><entry><literal>(vector unsigned char) (unsigned int, ... , unsigned int)</literal></entry></row>
+	<row><entry><literal>(vector signed char) (int)</literal></entry></row>
+	<row><entry><literal>(vector signed char) (int, ... , int)</literal></entry></row>	
+	<row><entry><literal>(vector unsigned short) (unsigned int)</literal></entry></row>
+	<row><entry><literal>(vector unsigned short) (unsigned int, ..., unsigned int)</literal></entry></row>
+	<row><entry><literal>(vector signed short) (int)</literal></entry></row>
+	<row><entry><literal>(vector signed short) (int, ... , int)</literal></entry></row>
+	<row><entry><literal>(vector unsigned int) (unsigned int)</literal></entry></row>
+	<row><entry><literal>(vector unsigned int) (unsigned int, ..., unsigned int)</literal></entry></row>
+	<row><entry><literal>(vector signed int) (int)</literal></entry></row>
+	<row><entry><literal>(vector signed int) (int, ..., int)</literal></entry></row>
+	<row><entry><literal>(vector float) (float)</literal></entry></row> 
+	<row><entry><literal>(vector float) (float, ... , float)</literal></entry></row> 
+	</tbody>
+	</tgroup>
+</table>
+
+
+
+<para>Here are are a few sample vector literals used for initialization:</para>
+
+<programlisting>
+<![CDATA[
+vector unsigned char a = (vector unsigned char) ('a')
+vector unsigned char b = (vector unsigned char) ('h', 'e', 'l', 'l',
+                                                 'o', ',', ' ', 'w', 
+                                                 'o', 'r', 'l', 'd', 
+                                                 '!', ' ', ' ', ' ');
+vector signed short c = (vector signed short) (-10);
+vector signed short d = (vector signed short) (0, 1, 2, 3,
+                                               4, 5, 6, 7);
+vector float e = (vector float) (3.14159276);
+vector float f = (vector float) ( 0.0, 1.0, 2.0, 3.0 );
+]]>
+</programlisting>
+
+<para>Note that the <type>vector unsigned char</type> literal spelling out <quote>hello, world!</quote> does not fill up all sixteen elements of the vector, so must be padded with the remaining three elements. In this case, we just use spaces. It should also be noted at this point that vector literals are not always the fastest method of obtaining constant vectors for your operations. In the next section, we will look at built-in AltiVec operations that can fill vectors with a combination of values very quickly. In the next chapter we will discuss why you might want to use these operations instead of the simpler literals.</para>
+
+<tip>
+<para><emphasis>Error:</emphasis><computeroutput>too few initializers</computeroutput>. If you receive this error, it means that you have not provided enough values in your vector literal statement. For example, a <type>vector unsigned char</type> expects either 1 or 16 values. A <type>vector float</type> expects 1 or 4.</para>
+</tip>
+
+	</sect3>
+
+	<sect3>
+		<title>Casts</title>
+
+<para>The AltiVec programming interface supports C-like casts between vector types. <xref linkend="BVP:altivec_casts"/> shows the new cast types supported. The cast themselves do not change the bit pattern of the vector. You should be careful when casting between types of different element sizes such as char to int or float. Numbers in one vector type typically do not match one-to-one in another.</para>
+
+<programlisting>
+<![CDATA[
+// this is okay - an all-zeros bit pattern is zero in IEEE-754
+vector unsigned int a = (vector unsigned int) (0);
+vector float b = (vector float) a;
+
+// trouble - you are not going to end up with
+// a (4.0, 4.0, 4.0, 4.0) vector here.
+vector unsigned int a = (vector unsigned int) (4);
+vector float b = (vector float) a;
+]]>
+</programlisting>
+
+<para>If you need to make conversions between vector types, you are safer to use the explicit AltiVec conversion operations (See <xref linkend="BVP:altivec_operations"/>). You cannot cast between vector and scalar types, which should make sense since no traditional scalar type has enough storage for a 128-bit vector. You can cast a vector to a pointer to a scalar type such as:</para>
+
+<programlisting>
+<![CDATA[
+vector unsigned int a = (vector unsigned int) ( 3, 2, 1, 0 );
+unsigned int *pui = (unsigned int*)(&a);
+]]>
+</programlisting>
+
+<table id="BVP:altivec_casts">
+	<title>AltiVec Casts</title>
+	<tgroup cols="1">
+	<tbody>
+	<row><entry><type>(vector unsigned char)</type></entry></row>
+	<row><entry><type>(vector signed char)</type></entry></row>
+	<row><entry><type>(vector bool char)</type></entry></row>
+	<row><entry><type>(vector unsigned short)</type></entry></row>
+	<row><entry><type>(vector signed short)</type></entry></row>
+	<row><entry><type>(vector bool short)</type></entry></row>
+	<row><entry><type>(vector unsigned int)</type></entry></row>
+	<row><entry><type>(vector signed int)</type></entry></row>
+	<row><entry><type>(vector bool int)</type></entry></row>
+	<row><entry><type>(vector float)</type></entry></row>
+	<row><entry><type>(vector pixel)</type></entry></row>
+	</tbody>
+	</tgroup>
+</table>
+
+	</sect3>
+	<sect3>
+		<title>Use Unions</title>
+
+<para>You may have noticed a bit of code in the introductory examples that doesn't match up with the AltiVec types. Specifically, the optimized AltiVec dot product function was defined as:</para>
+
+<programlisting>
+<![CDATA[
+vfloat altivec_dot_product(vector float *a, vector float *b)
+{
+    vfloat result;
+    ...
+    vec_ste(tmp1, 3, &(result.e[0]));
+    ...
+    return result;
+}
+]]>
+</programlisting>
+
+<para>The <structname>vfloat</structname> type used in this code is actually a <literal>union</literal>:</para>
+
+<programlisting>
+<![CDATA[
+typedef union {
+    float e[4];
+    vector float v;
+} vfloat;
+]]>
+</programlisting>
+
+<para>By using a <literal>union</literal>, you can make it much easier to access the individual elements of the vector. You will find many of the examples in this chapter and the next make use of these kinds of unions, as well as many of the AltiVec tutorials and examples on the web. To be sure, your unions will be much easier to read than trying to dereference the vector directly to get at individual elements:</para>
+
+<programlisting>
+<![CDATA[
+vector float a = (vector float) ( 0.0, 1.0, 2.0, 3.0 );
+float second_element = *(((float*) &a)+1);
+]]>
+</programlisting>
+
+<para>Here are some sample unions for different sized data types. Note that the element array <varname>e</varname> in each union is properly sized for the number of elements in the vector:</para>
+
+<programlisting>
+<![CDATA[
+typedef union {
+    unsigned char e[16];
+    vector unsigned char v;
+} vuchar;
+
+typedef union {
+    unsigned short int e[8];
+    vector unsigned short int v;
+} vushort;
+
+typedef union {
+    signed int e[4];
+    vector signed int v;
+} vsint;
+]]>
+</programlisting>
+
+<para>The following code shows everything we have talked about up to this point: AltiVec types, using unions, casts and vector literals. It is AltiVec's version of <quote>Hello, World!</quote></para>
+
+<programlisting>
+<![CDATA[
+#include <stdio.h>
+
+typedef union {
+    unsigned char e[16];
+    vector unsigned char v;
+} vuchar;
+
+int main (int argc, const char * argv[]) {
+    int i;
+    vuchar hello;
+    hello.v = (vector unsigned char) ('h', 'e', 'l', 'l',
+                                      'o', ',', ' ', 'w',
+                                      'o', 'r', 'l', 'd',
+                                      '!', ' ', ' ', ' ');
+
+    for(i = 0; i < 16; ++i)
+        printf("%c", hello.e[i]);
+    printf("\n");
+    
+    return 0;
+}
+]]>
+</programlisting>
+
+<para>If you fire up <application>ProjectBuilder</application>, create a new <guilabel>Standard Tool</guilabel> project, set the compiler to use <literal>-faltivec</literal>, type the above code into <filename>main.c</filename> and compile you should see the output <computeroutput>hello, world!</computeroutput> in the <guilabel>Run</guilabel> tab.</para>
+
+<tip>
+<para><emphasis>Note:</emphasis> In addition to the compiler-specific language extensions, the Motorola AltiVec documentation specifies extensions to certain library functions such as <function>printf</function> to support vector types. Instead of looping over the individual characters in the vector, we should have been able to call: <literal>printf("\%vc", hello.v);</literal>, using the <literal>\%vc</literal> formatting string to indicate a vector of characters. The current version of Apple's libraries (OSX v10.1.3) do not support these extensions, and you will receive  <computeroutput>warning: unknown conversion type character `v' in format</computeroutput> if you try to use them.</para>
+</tip>
+
+	</sect3>
+	<sect3>
+		<title>Alignment</title>
+
+<para>AltiVec expects vectors to be 16-byte aligned. Fortunately, the compiler provides this alignment automatically for any vector type, as well as any structures or unions that have vector components. Dealing with unaligned memory locations can be bothersome, but is possible. The next section details operations available for dealing with unaligned memory. In practice, you should not run into this problem as OSX's implementation of <function>malloc</function> returns 16-byte aligned memory. You <emphasis>could</emphasis> get yourself into trouble with something like:</para>
+
+<programlisting>
+<![CDATA[
+int main (int argc, const char * argv[]) {
+
+    int m = 5;
+    int n = 5;
+    
+    float *matrix = (float*) malloc(sizeof(float)*m*n);
+
+    // assign some values to the matrix elements
+    
+    vector float *vf1 = (vector float*)(matrix);
+    vector float *vf2 = (vector float*)(matrix + n);
+    vector float *vf3 = (vector float*)(matrix + n*2);
+    vector float *vf4 = (vector float*)(matrix + n*3);
+
+    *vf4 = vec_madd(*vf1, *vf2, *vf3);
+
+    free(matrix);
+    return 0;
+}
+]]>
+</programlisting>
+
+<para>In the above code, a matrix is allocated using <function>malloc</function>, but the matrix's dimensions are not divisible by four. This means that each row after the first will not align on the 16-byte boundary. We can then imagine coming along later wanting to send this data to the AltiVec engine for some kind of computation. Because of the misalignment, we wouldn't be able to do that by just assigning pointers as we have done in this example. Worst of all, the AltiVec engine silently accepts all of these memory locations without throwing an exception. On a load/store of a misaligned vector, is simply ignores the low-order bits, effectively pushing the pointer down to the lower aligned memory location. The AltiVec engine then silently proceeds to read and write its vectors using this incorrect pointer! Needless to say, this can lead to some very difficult to track bugs that might only show up as incorrect results.</para>
+
+<para>You will be more likely to run into this issue when dealing with legacy code. Often in scientific and engineering applications we will be dealing with enormous amounts of information. Because memory bandwidth is always a limiting factor, making sure your objects are as small as possible is important--making sure rows align on 16-byte boundaries usually doesn't enter the picture. While we typically view optimization as a last step in program development, when writing new programs that you are almost sure will be using AltiVec, it is a good idea to keep these kinds of memory organizational details in mind.</para>
+
+	</sect3>
+	</sect2>
+	<sect2 id="BVP:altivec_operations">
+		<title>AltiVec Operations</title>
+
+<para>Motorola's AltiVec C/C++ programming interface uses built-in functions to provide a more C-like interface to the underlying AltiVec operations. If you recall from the dot product example, these operations to not relate to actual function calls. Instead the assembly instructions are inserted directly at the point of use&mdash;much like using inlining to optimize away the function call and return overhead. We have already seen a couple of these functions, such as <function>vec_madd</function>, <function>vec_add</function> and <function>vec_sld</function>. Each of these functions overloads to one or more underlying assembly instructions that operate on specific vector types. This reduces the overall number of operation definitions you must remember, as well as simplifies the calling of some operations that would take multiple assembly instructions to complete. Lets look at a couple of concrete examples:</para>
+
+<para>The <function>vec_add</function> operation, which takes two matched vectors of any kind except for <type>vector pixel</type> and adds their component elements, maps to the assembly <function>vaddubm</function>, <function>vadduhm</function>, <function>vadduwm</function>, or <function>vaddfp</function> depending upon whether the arguments passed to it are <type>char</type>, <type>short</type>, <type>int</type>, or <type>float</type> respectively. <xref linkend="BVP:vec_add_map"/> shows how the arguments for <literal>vaddubm d,a,b</literal> are mapped to the different underlying assembly instructions. <xref linkend="BVP:vec_add"/> graphically depicts how the different AltiVec instructions operate on their target vectors.</para>
+
+<table id="BVP:vec_add_map">
+	<title><function>vec_add</function> Assembly Mapping</title>
+	<tgroup cols="4">
+	<thead>
+	<row>
+		<entry>d</entry>
+		<entry>a</entry>
+		<entry>b</entry>
+		<entry>maps to</entry>
+	</row>
+	</thead>
+	<tbody>
+<row><entry></entry><entry> <type>vector unsigned char</type> </entry><entry> <type>vector unsigned char</type> </entry><entry></entry></row>
+<row><entry><type>vector unsigned char</type></entry><entry><type>vector unsigned char</type></entry><entry><type>vector bool char</type></entry><entry><literal>vaddubm d,a,b</literal></entry></row>
+<row><entry></entry><entry> <type>vector bool char</type> </entry><entry> <type>vector signed char</type> </entry><entry> </entry></row>
+<row><entry></entry><entry> <type>vector signed char</type> </entry><entry> <type>vector signed char</type> </entry><entry></entry></row>
+<row><entry><type>vector signed char</type></entry><entry><type>vector signed char</type></entry><entry><type>vector bool char</type></entry><entry><literal>vaddubm d,a,b</literal></entry></row>
+<row><entry></entry><entry> <type>vector bool char</type> </entry><entry> <type>vector signed char</type> </entry><entry> </entry></row>
+<row><entry></entry><entry> <type>vector unsigned short</type> </entry><entry> <type>vector unsigned short</type> </entry><entry></entry></row>
+<row><entry><type>vector unsigned short</type></entry><entry><type>vector unsigned short</type></entry><entry><type>vector bool short</type></entry><entry><literal>vadduhm d,a,b</literal></entry></row>
+<row><entry></entry><entry> <type>vector bool short</type> </entry><entry> <type>vector signed short</type> </entry><entry> </entry></row>
+<row><entry></entry><entry> <type>vector signed short</type> </entry><entry> <type>vector signed short</type> </entry><entry></entry></row>
+<row><entry><type>vector signed short</type></entry><entry><type>vector signed short</type></entry><entry><type>vector bool short</type></entry><entry><literal>vadduhm d,a,b</literal></entry></row>
+<row><entry></entry><entry> <type>vector bool short</type> </entry><entry> <type>vector signed short</type> </entry><entry> </entry></row>
+<row><entry></entry><entry> <type>vector unsigned int</type> </entry><entry> <type>vector unsigned int</type> </entry><entry></entry></row>
+<row><entry><type>vector unsigned int</type></entry><entry><type>vector unsigned int</type></entry><entry><type>vector bool int</type></entry><entry><literal>vadduwm d,a,b</literal></entry></row>
+<row><entry></entry><entry> <type>vector bool int</type> </entry><entry> <type>vector signed int</type> </entry><entry> </entry></row>
+<row><entry></entry><entry> <type>vector signed int</type> </entry><entry> <type>vector signed int</type> </entry><entry></entry></row>
+<row><entry><type>vector signed int</type></entry><entry><type>vector signed int</type></entry><entry><type>vector bool int</type></entry><entry><literal>vadduhm d,a,b</literal></entry></row>
+<row><entry></entry><entry> <type>vector bool int</type> </entry><entry> <type>vector signed int</type> </entry><entry> </entry></row>
+<row><entry><type>vector float</type></entry><entry><type>vector float</type></entry><entry><type>vector float</type></entry><entry><literal>vaddfp d,a,b</literal></entry></row>
+	</tbody>
+	</tgroup>
+</table>
+
+
+<figure id="BVP:vec_add">
+	<title>AltiVec \texttt{vec_add</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_add.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>With the <function>vec_add</function> operation, vector types which have the same size elements, such as <type>vector unsigned char</type> and <type>vector bool char</type> can be mixed on the input so that you can make calls such as:</para>
+
+<programlisting>
+<![CDATA[
+vector unsigned char a = (vector unsigned char) (1);
+vector bool char b = (vector bool char) (0);
+
+vector unsigned char c = vec_add(a, b);
+]]>
+</programlisting>
+
+<para>The <function>vec_add</function> operation is a good example of an operation that overloads onto several different assembly instructions depending upon the argument types; however, in each case, the operation is mapped onto a single instruction. The AltiVec programming interface also provides operations that map onto multiple underlying assembly instructions. The <function>vec_abs</function> operation, which can take in any of the signed vector types (including floats), gets mapped to three assembly operations that result in the return of a vector holding the absolute values of the elements in the original vector. Given the operation <literal>d = vec_abs(a)</literal>, <xref linkend="BVP:vec_abs_map"/> shows the different assembly instructions it is mapped to. <xref linkend="BVP:vec_abs"/> graphically shows how the operation acts on its target vectors.</para>
+
+<table id="BVP:vec_abs_map">
+	<title><function>vec_abs</function> Assembly Mapping</title>
+	<tgroup cols="4">
+	<thead>
+	<row><entry>d</entry><entry>a</entry><entry>maps to</entry></row>
+	</thead>
+	<tbody>
+<row><entry></entry><entry> </entry><entry> <literal>vspltisb z,0</literal> </entry></row>
+<row><entry><type>vector signed char</type>  </entry><entry> <type>vector signed char</type></entry><entry><literal>vsububm t,z,a</literal></entry></row>
+<row><entry></entry><entry>  </entry><entry> <literal>vmaxsb d,a,t</literal></entry></row>
+<row><entry></entry><entry> </entry><entry> <literal>vspltisb z,0</literal> </entry></row>
+<row><entry><type>vector signed short</type>  </entry><entry> <type>vector signed short</type> </entry><entry><literal>vsubuhm t,z,a</literal></entry></row>
+<row><entry></entry><entry>  </entry><entry> <literal>vmaxsh d,a,t</literal></entry></row>
+<row><entry></entry><entry> </entry><entry> <literal>vspltisb z,0</literal> </entry></row>
+<row><entry><type>vector signed int</type>  </entry><entry> <type>vector signed int</type> </entry><entry><literal>vsubuwm t,z,a</literal></entry></row>
+<row><entry></entry><entry>  </entry><entry> <literal>vmaxsw d,a,t</literal></entry></row>
+<row><entry></entry><entry> </entry><entry> <literal>vspltisw m,-1</literal> </entry></row>
+<row><entry><type>vector float</type>  </entry><entry> <type>vector float</type> </entry><entry><literal>vslw t,m,m</literal></entry></row>
+<row><entry></entry><entry>  </entry><entry> <literal>vandc d,a,t</literal></entry></row>
+
+	</tbody>
+	</tgroup>
+</table>
+
+
+<figure id="BVP:vec_abs">
+	<title>AltiVec <function>vec_abs</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_abs.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Every AltiVec operation is spelled out in detail in Motorola's <quote>AltiVec Technology Programming Interface Manual.</quote> See <xref linkend="BVP:references"/> for where you can download a copy. It provides an alphabetical list of all operations, and shows what assembly instructions they are mapped to. In the next chapter we will take a look at how this assembly information can be critical to wringing the last drop of speed out of your code.</para>
+
+<tip>
+<para><emphasis>Error:</emphasis> <computeroutput>no instance of overloaded built-in function `[function name]' matches the parameter list</computeroutput>. This error can occur in several ways. First, you could provide the wrong number of arguments for a built-in vector function. Second, you could give the function a set of parameters it is unable to match with an underlying AltiVec operation. Some AltiVec operations are limited to certain vector types, and passing in a vector type it cannot handle will generate this error.</para>
+</tip>
+
+<para>Up to this point we have only touched on a handful of AltiVec operations. It turns out that Motorola has provided us with 113 of them. The operators perform a wide range of functions from conversion and creation of vectors, through mathematical, logical, and permutation operations, to memory management functions. In the next few sections we will look at the range of operators available, and show examples of some important ones in use. It would be difficult to go into much detail on every single instruction here, so this chapter will necessarily touch on a few of the more commonly used operations. <xref linkend="AO"/> provides a full listing and description of all 113 operations, and is a handy Quick-Reference guide when you are looking for the right operation for a particular task.</para>
+
+	<sect3>
+		<title>Conversion and Creation Operations</title>
+
+<para>When vector casts were introduced, it was mentioned that the cast does not change the bit pattern of the actual vector, it simply comforts the compiler into believing there is a measure of type safety. To properly convert between different vectors you should use the <function>vec_ctf(a,b)</function>, <function>vec_cts(a,b)</function> and <function>vec_ctu(a,b)</function> operations. <function>vec_ctf</function> is somewhat confusingly called <quote>convert from fixed-point word</quote> by the Motorola documentation, when it seems it should stand for <quote>convert to float,</quote> which is in fact what it does&mdash;convert a <type>vector unsigned int</type> or <type>vector signed int</type> to a <type>vector float</type>. <function>vec_cts</function> and <function>vec_ctu</function> provide conversions in the opposite direction for signed and unsigned integers respectively.</para>
+
+<programlisting>
+<![CDATA[
+vector unsigned int a = (vector unsigned int) ( 0, 1, 2, 3 );
+vector signed int b = (vector unsigned int) ( 0, -1, -2, -3 );
+
+vector float c = vec_ctf(b, 0);
+a = vec_ctu(c, 0);
+b = vec_cts(c, 0);
+]]>
+</programlisting>
+
+<para>The first argument for the conversion operations is the vector to be converted. The second argument determines the conversion's multiplier or divisor. The <function>vec_ctf</function> operation performs the integer to float conversion, and then divides the elements of the vectors by $2^{b}$ before returning the vector. The <function>vec_ctu</function> and <function>vec_cts</function> operations multiply their converted vector by $2^b$ before returning it. In the case of the examples above, a zero ($2^0$) gives us a divisor (or multiplier) of one, which is the straightforward conversion we are looking for.</para>
+
+<para>All three of these conversion operations work on vectors holding 4 32-bit elements, and not with the smaller 8 or 16-bit element vectors. To move between vectors of varying element size you need to use the pack and unpack operations: <function>vec_pack(a,b)</function>, <function>vec_packs(a,b)</function>, <function>vec_packsu(a,b)</function>, <function>vec_unpackh(a)</function>, and <function>vec_unpackl(a)</function>. The pack commands take two vectors and pack the wider values into a single vector. For example, two <type>vector unsigned int vector</type>s each holding four 32-bit elements would be packed into a single <type>vector unsigned short</type> holding eight 16-bit elements. The operations shrink each element of the two argument vectors by either truncating (See <xref linkend="BVP:vec_pack"/>), or using a signed or unsigned saturated value. The <function>vec_packpx(a,b)</function> operation is used for packing vectors of pixel type.</para>
+
+<figure id="BVP:vec_pack">
+	<title>AltiVec <function>vec_pack</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="70" align="center" 
+fileref="./chapters/bvector/figures/vec_pack.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>AltiVec provides a number of splat operations to quickly fill a vector's elements with a value. <function>vec_splat(a,b)</function>  fills the return vector's elements with the value of the element at the index given by <varname>b</varname> in the argument vector <varname>a</varname>. The following code fills vector <varname>d</varname> with all 2's (See <xref linkend="BVP:vec_splat"/> (a)):</para>
+
+<programlisting>
+<![CDATA[
+vector unsigned short a = (vector unsigned short) ( 7, 21, 0, 2, 
+                                                    9, 65, 1, 4 );
+vector unsigned short d = vec_splat(a,3);
+]]>
+</programlisting>
+
+<figure id="BVP:vec_splat">
+	<title>AltiVec <function>vec_splat</function> (\textsf{a</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="70" align="center" 
+fileref="./chapters/bvector/figures/vec_splat.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The other six splat operations provide signed or unsigned vectors of either 8, 16 or 32-bit sized elements: <function>vec_splat_s8(a)</function>, <function>vec_splat_s16(a)</function>, <function>vec_splat_s32(a)</function>, <function>vec_splat_u8(a)</function>, <function>vec_splat_u16(a)</function>, and <function>vec_splat_u32(a)</function>. Each of these operations takes a single integer that is used to fill in the result vector. <xref linkend="BVP:vec_splat"/> (b) shows the <function>vec_splat_u16</function> in action.</para>
+
+<para>The splat operations turn out to be more than merely convenience methods. It turns out that, if possible, you will almost always want to use the splat operations to fill your vectors instead of using vector literals. The reason for this is the fact that constants are stored in memory, and loaded into the vector register file as needed. If you are unlucky enough, the constant will not be in cache, and your code will stall while waiting for it to load. By programmatically filling your vectors, you do not risk a cache miss and save precious cache real-estate to boot.</para>
+
+<programlisting>
+<![CDATA[
+vector float a = (vector float) ( 10.0, 10.0, 10.0, 10.0 );
+vector float b = vec_ctf( vec_splat_u32( 10 ), 0 );
+]]>
+</programlisting>
+
+<para>Both of these assignments will give you a vector filled with $10.0$, but the second is much faster. You will see examples of this usage in the code examples throughout this chapter and the next.</para>
+
+<para>The following inline function is used to provide a <type>vector float</type> full of negative zeros. A vector of $-0.0$ is often preferred in calculations over a vector full of positive zeros, which could more easily be created with the simple cast <literal>a = (vector float) vec_splat_u32(0);</literal> since all-zeros is the same binary representation in an integer vector as it is in a float vector.</para>
+
+<programlisting>
+<![CDATA[
+inline vector float neg_zero(void)
+{
+    vector unsigned int unz = vec_splat_u32(-1);
+    return (vector float) vec_sl(unz, unz);
+}
+]]>
+</programlisting>
+
+	</sect3>
+	<sect3>
+		<title>Mathematical Operations</title>
+
+<para>AltiVec provides a number of mathematical operations that support floating-point, integer and mixed-type vector arguments. Many of the operations, like <function>vec_madd</function> perform multiple operations in one call.</para>
+
+<para>AltiVec supplies <function>vec_add(a,b)</function> and <function>vec_sub(a,b)</function> operations that support basic addition and subtraction for float and integer vectors. There is also a <function>vec_abs(a)</function> operation that supports both signed integer and floating-point vectors.</para>
+
+<tip>
+<para><emphasis>Note:</emphasis> For the sake of brevity, when we refer to integer vectors in reference to argument types for AltiVec operations, we are generally speaking about any of the vector types excluding <type>vector float</type> and <type>vector pixel</type>. <type>vector pixel</type> is generally not referenced at all in these discussions, and will be mentioned expressly when needed. We may also refer to either unsigned or signed vectors, which refers to any <type>char</type>, <type>short</type> or <type>int</type> vector of appropriate signability. Most operations that support integers are overloaded to support the different sized integer elements.</para>
+</tip>
+
+<para>Taking the prize as the most re-used operation is the multiply. AltiVec provides nine different multiplication operations, and ironically enough, none of them is just a plain multiplication of two vectors. The basic fused multiply-add <function>vec_madd</function> we have already seen in action. Of the additional multiplication operators, only <function>vec_nmsub(a,b,c)</function> supports floating point values. We will come back to the other multiplication operations later when we talk about integer-only operations. <xref linkend="BVP:vec_nmsub"/> shows <function>vec_nmsub</function> in action.</para>
+
+<figure id="BVP:vec_nmsub">
+	<title>AltiVec <function>vec_nmsub</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_nmsub.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Like <function>vec_nmsub</function>, a number of the mathematical operations provided by AltiVec only apply to vectors of floating-point values. The <function>vec_ceil(a)</function>, <function>vec_floor(a)</function>, <function>vec_trunc(a)</function> and <function>vec_round(a)</function> unary operations carry out the same operations as their scalar counterparts by either rounding up, rounding down, truncating or rounding to the nearest floating-point integer every element of <varname>vector float a</varname>.</para>
+
+<para>There is no direct support for division in the AltiVec programming interface as there is with scalar floating-point units. Instead, to compute $a_i/b_i$ for every element in <varname>a</varname> and <varname>b</varname>, we must first compute $1/b_i$ and then compute $a_i\frac{1}{b_i}$. The first step uses the reciprocal estimate operation <function>vec_re(a)</function>. To complicate matters, the <function>vec_re</function> operation only returns a half-precision estimate of the reciprocal. We must then perform a single <emphasis>Newton-Raphson</emphasis> refinement step ($u_{i+1} = u_i(2-vu_i)$) in order to get a full single-precision reciprocal value. The final step is to use the <function>vec_madd</function> operation to complete the division by multiplying the numerator <varname>a</varname> by the reciprocal:</para>
+
+<programlisting>
+<![CDATA[
+inline vector float vec_div(vector float a, vector float b)
+{
+    vector float vone = vec_ctf( vec_splat_u32(1), 0) );
+    vector float re = vec_re(b);
+    re = vec_madd( re,
+                   vec_nmsub (re, b, vone,
+                   re);
+    return vec_madd(a, re, (vector float) vec_splat_u32(0));
+}
+]]>
+</programlisting>
+
+<para>Note the use of the <function>vec_nmsub</function> operation presented earlier.</para>
+
+<para>Obtaining the square roots of <type>vector float</type> elements is very similar to the method of acquiring a full-precision division. First, we must use the <function>vec_rsqrte(a)</function> operation to obtain an estimate of the reciprocal of the square root ($1/a_i^{1/2}$), then using a similar <emphasis>Newton-Raphson</emphasis> step ($u_{i+1} = \frac{1}{2}u_i(3-vu_i^2)$), we can obtain the full single-precision reciprocal square root. Finally, we obtain the square root by multiplying our original value by the reciprocal square root ($\sqrt{a_i} = a_i\frac{1}{a_i^{1/2}}$).</para>
+
+<programlisting>
+<![CDATA[
+inline vector float vec_sqrt(vector float a)
+{
+    vector float vone_half = vec_ctf( vec_splat_u32(1), 1 );
+    vector float vone = vec_ctf( vec_splat_u32(1), 0 );
+    vector float rsqrte = vec_rsqrte(a);
+    vector float re = vec_madd(rsqrte, rsqrte, neg_zero() );
+    vector float half_rsqrte = vec_madd(rsqrte,
+                                    vone_half,
+                                    neg_zero() );
+    vector float tmp = vec_nmsub( a, re, vone );
+    rsqrte = vec_madd( tmp, hrsqrte, rsqrte );
+    return vec_madd( a, rsqrte, neg_zero() );
+}
+]]>
+</programlisting>
+
+<para>While the division and square root operations are obviously costly, there are two things to keep in mind: First, In almost all FPU implementations division is more costly than any other operation, even on the PowerPC's FPU, where almost all floating-point calculations incur the same overhead. The AltiVec ALU is no different. However, most algorithms these days take this performance hit into account in their design already and avoid any gratuitous use of these operations. Second, we are working on <type>vector float</type>s, so each function call is simultaneously calculating the value for four floats. A powerful example of the performance benefits of AltiVec's computation model.</para>
+
+<para>In addition to the reciprocal and reciprocal square root estimators, AltiVec also provides estimators for $2^v$ and $log_2 v$: <function>vec_expte(a)</function> and <function>vec_loge(a)</function> respectively.</para>
+
+<para>Many of AltiVec's mathematical operations support integer-only vectors. <function>vec_abss(a)</function>, <function>vec_adds(a,b)</function> and <function>vec_subs(a,b)</function> are the saturated versions of the more general absolute, add and subtract operations <function>vec_abs</function>, <function>vec_add</function> and <function>vec_sub</function>. <function>vec_addc(a,b)</function> and <function>vec_subc(a,b)</function> instead of returning a result vector <varname>d</varname> filled with the addition or subtraction result, return vectors indicating whether there was a carry resulting from the addition or subtraction of each element. <function>vec_avg(a,b)</function> returns the average of the integer values in the two argument vectors <varname>a</varname> and <varname>b</varname>.</para>
+
+<para>The <function>vec_sums(a,b)</function>, <function>vec_sum4s(a,b)</function> and <function>vec_sum2s(a,b)</function> operations are some of the few <emphasis>intra-vector</emphasis> operations supported by AltiVec within the family of mathematical operations. Opposed to the traditional <function>vec_add*</function> operations, the <function>vec_sum*</function> operations sum across the vector elements (intra-vector), instead of between elements of different vectors (inter-vector). In the case of <function>vec_sums</function>, the result is a vector with its last element the sum of $a_0+a_1+a_2+a_3+b_3$. <xref linkend="BVP:vec_sums"/> shows the <function>vec_sums</function> operation in action.</para>
+
+<figure id="BVP:vec_sums">
+	<title>AltiVec <function>vec_sums</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_sums.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The <function>vec_sum4s(a,b)</function> and <function>vec_sum2s(a,b)</function> operations are shown in <xref linkend="BVP:vec_sumns"/> (a) and (b).</para>
+
+<figure id="BVP:vec_sumns">
+	<title>AltiVec <function>vec_sum4s</function> (a) and <function>vec_sum2s</function> (b) Operations</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_sumns.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The summation functions have <function>vec_msum(a,b,c)</function> and <function>vec_msums(a,b,c)</function> versions that multiply the <varname>a</varname> and <varname>b</varname> vectors before performing a <function>vec_sum4s</function>-like operation with <varname>c</varname>. (See <xref linkend="BVP:vec_msum"/>).</para>
+
+<figure id="BVP:vec_msum">
+	<title>AltiVec <function>vec_msum</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_msum.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>There is a saturated version of <function>vec_madd</function> for integer vectors <function>vec_madds</function>, as well as a number of additional integer multiplication operations: <function>vec_mladd</function>, multiply low and add unsigned half word; <function>vec_mradds</function>, multiply round and add saturated; <function>vec_mule</function> multiply even; and, <function>vec_mulo</function>, multiply odd. See <xref linkend="AO"/> for more detailed definitions of these, and all operations we have mentioned here.</para>
+
+	</sect3>
+	<sect3>
+		<title>Logical, Comparator and Predicate Operations</title>
+
+<para>AltiVec provides the following <emphasis>logical</emphasis> operations:</para>
+
+
+<informaltable>
+	<tgroup align="center" cols="2">
+	<colspec colwidth="2in"/>
+	<colspec colwidth="2in"/>
+	<tbody>
+<row><entry><function>vec_and(a,b)</function></entry><entry>AND</entry></row>
+<row><entry><function>vec_andc(a,b)</function></entry><entry>AND with complement</entry></row>
+<row><entry><function>vec_nor(a,b)</function></entry><entry>NOR</entry></row>
+<row><entry><function>vec_or(a,b)</function></entry><entry>OR</entry></row>
+<row><entry><function>vec_xor(a,b)</function></entry><entry>XOR</entry></row>
+	</tbody>
+	</tgroup>
+</informaltable>
+
+<programlisting>
+<![CDATA[
+]]>
+</programlisting>
+
+<para>Each of these operations performs a bit-wise AND, NOR, XOR, etc. on the two vectors <varname>a</varname> and <varname>b</varname>. These operations work on all vector types, as they do not care about vector's element structure--that is whether the vector's elements are laid out as 8, 16 or 32-bit quantities. See <xref linkend="BVP:vec_and"/>.</para>
+
+<figure id="BVP:vec_and">
+	<title>AltiVec <function>vec_and</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_and.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The <emphasis>comparison</emphasis> operations look at each element in the argument vectors, and make the relevant comparison, returning either  <emphasis>true</emphasis> or <emphasis>false</emphasis> for each element in the result vector. The size of the result vector <type>vector bool char</type>, <type>vector bool short</type> or <type>vector bool int</type> depends on the size of the argument vectors. For example, if the input vectors <varname>a</varname> and <varname>b</varname> are <type>vector float</type>, <type>vector unsigned int</type> or <type>vector signed int</type>, the comparison operators will return a <type>vector bool int</type>. Likewise for the 8 and 16-bit element vectors.</para>
+
+<programlisting>
+<![CDATA[
+<function>vec_cmpeq(a,b)</function> & Equal \\ \hline
+<function>vec_cmpge(a,b)</function> & Greater Than or Equal \\ \hline
+<function>vec_cmpgt(a,b)</function> & Greater Than \\ \hline
+<function>vec_cmple(a,b)</function> & Less Than or Equal \\ \hline
+<function>vec_cmplt(a,b)</function> & Less Than \\ \hline
+\end{tabular}
+\end{center}
+]]>
+</programlisting>
+
+<para>There is one comparison operation that does not return a bool vector, and that is <function>vec_cmpb(a,b)</function>: compare bounds. This operations returns a <type>vector signed int</type> that indicates where $a_i$ falls in relation to the range $(-b_i, b_i)$. The following code shows how to use the results to determine the bound relationship:</para>
+
+<programlisting>
+<![CDATA[
+typedef union {
+    signed int e[4];
+    vector signed int v;
+} vsint;
+
+void bounds_print(vsint a) {
+    int i;
+    for(i = 0; i < 4; ++i) {
+        if(!a.e[i])
+            printf("a[%d] in bounds:\n", i);
+        else if(a.e[i] < 0)
+            printf("a[%d] above bounds:\n", i);
+        else if(a.e[i] > 0)
+            printf("a[%d] below bounds:\n", i);
+    }
+}
+
+int main (int argc, const char * argv[]) {
+    vsint result;    
+    vector float a = (vector float) (0.5, 5.0, -0.5, -4.0);
+    vector float b = (vector float) (1.0, 1.0, 1.0, 1.0);
+    result.v = vec_cmpb(a, b);
+
+    bounds_print(result);
+    return 0;
+}
+]]>
+</programlisting>
+
+<para>Note that if $a_i$ is above bounds, <varname>result.e[i]</varname> holds a very large negative number, and if $a_i$ is below bounds, it holds a very large positive number. The operation works by setting the two high-order bits in each element to indicate whether $a_i$ is out-of-bounds in either direction.</para>
+
+<para>Two additional comparisons are <function>vec_max(a,b)</function> and <function>vec_min(a,b)</function>. Each of these operations returns a vector holding either the maximum or minimum element from each pair of corresponding vector elements. In the following code, <literal>d = (3.14, 0.42, -0.5, 1.0)</literal>;</para>
+
+<programlisting>
+<![CDATA[
+vector float a = (vector float) (3.14, 0.23, -0.5, -4.0);
+vector float b = (vector float) (1.0, 0.42, -1.0, 1.0);
+vector float d = vec_max(a,b);
+]]>
+</programlisting>
+
+<para>The AltiVec Programming interface includes a number of <emphasis>predicate</emphasis> operations that return a single <type>int</type> indicating whether <emphasis>all</emphasis> elements in the vectors meet a certain criteria, or whether <emphasis>any</emphasis> individual element or element pair meets the criteria. The criteria itself is dependent upon the operation. <xref linkend="BVP:predicates"/> lists the different predicate operations. Note that most operations take two argument vectors, and that the predicate criteria is based in an inter-element comparison of the two vectors' elements. The <function>vec_*_nan</function> and <function>vec_*_numeric</function> predicates only take a single vector.</para>
+
+<table id="BVP:predicates">
+	<title>AltiVec Predicate Operations</title>
+	<tgroup cols="3">
+	<tbody><row><entry></entry></row></tbody>
+	</tgroup>
+</table>
+<programlisting>
+<![CDATA[
+<function>vec_all_eq(a,b)</function> & all elements equal \\ \hline
+<function>vec_all_ge(a,b)</function> & all elements greater than or equal \\ \hline
+<function>vec_all_gt(a,b)</function> & all elements greater than \\ \hline
+<function>vec_all_in(a,b)</function> & all elements in bounds \\ \hline
+<function>vec_all_le(a,b)</function> & all elements less than or equal \\ \hline
+<function>vec_all_lt(a,b)</function> & all elements less than \\ \hline
+<function>vec_all_nan(a)</function> & all elements not a number \\ \hline
+<function>vec_all_ne(a,b)</function> & all elements not equal \\ \hline
+<function>vec_all_nge(a,b)</function> & all elements not greater than or equal \\ \hline
+<function>vec_all_ngt(a,b)</function> & all elements not greater than \\ \hline
+<function>vec_all_nle(a,b)</function> & all elements not less than or equal \\ \hline
+<function>vec_all_nlt(a,b)</function> & all elements not less than \\ \hline
+<function>vec_all_numeric(a)</function> & all elements numeric \\ \hline
+<function>vec_any_eq(a,b)</function> & any element equal \\ \hline
+<function>vec_any_ge(a,b)</function> & any element greater than or equal \\ \hline
+<function>vec_any_gt(a,b)</function> & any element greater than \\ \hline
+<function>vec_any_le(a,b)</function> & any element less than or equal \\ \hline
+<function>vec_any_lt(a,b)</function> & any element less than \\ \hline
+<function>vec_any_nan(a)</function> & any element not a number \\ \hline
+<function>vec_any_ne(a,b)</function> & any element not equal \\ \hline
+<function>vec_any_nge(a,b)</function> & any element not greater than or equal \\ \hline
+<function>vec_any_ngt(a,b)</function> & any element not greater than \\ \hline
+<function>vec_any_nle(a,b)</function> & any element not less than or equal \\ \hline
+<function>vec_any_nlt(a,b)</function> & any element not less than \\ \hline
+<function>vec_any_numeric(a)</function> & any element numeric \\ \hline
+<function>vec_any_out(a,b)</function> & any element out of bounds \\ \hline
+]]>
+</programlisting>
+
+<para>The following code shows using a <function>vec_splat_s32</function> and <function>vec_any_ge</function> operation to quickly detect whether any element of two vectors is greater than 10. In the next chapter we will see an example of this kind of predicate in action when we use it to detect algorithms that are getting close to the limits of our single-precision floating point accuracy. </para>
+
+<programlisting>
+<![CDATA[
+void print_status(int s)
+{
+    if(s)
+        printf("Warning!\n");
+    else
+        printf("all systems nominal\n");
+}
+
+int main (int argc, const char * argv[]) {
+
+    vector signed int a = (vector signed int) (5, 2, -3, -4);
+    vector signed int b = (vector signed int) (8, 12, 3, 2);
+
+    print_status(vec_any_ge(a, vec_splat_s32(10)));
+    print_status(vec_any_ge(b, vec_splat_s32(10)));
+
+    return 0;
+}
+]]>
+</programlisting>
+
+	</sect3>
+	<sect3>
+		<title>Permutation Operations</title>
+
+<para>The AltiVec permutation operations allow us to move vector elements around within and between vectors in a very efficient manner. Because there is a separate permute unit (VPU) that operates in parallel with the vector ALU, permutations operations can be carried out as the same time we are performing calculations on another set of vectors.</para>
+
+<para>The basic permutation operation is <function>vec_perm(a,b,c)</function>. This operation uses the values in the <varname>vector unsigned char c</varname> to arbitrarily move the elements of the two vectors <varname>a</varname> and <varname>b</varname> into the return vector. The permute operation assigns an index to each element running in order from (<literal>00&mdash;0F</literal>) for vector <varname>a</varname> to (<literal>10&mdash;1F</literal>) for vector <varname>b</varname>. <xref linkend="BVP:vec_perm"/> depicts how the permute operation uses these values in the <varname>c</varname> vector to pick which elements to place into the return vector <varname>d</varname>.</para>
+
+<figure id="BVP:vec_perm">
+	<title>AltiVec <function>vec_perm</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_perm.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The merge operations <function>vec_mergeh(a,b)</function> and <function>vec_mergel(a,b)</function> take two vectors and merge either the lower or upper half of each vector into the result vector by interleaving elements from each vector. <xref linkend="BVP:vec_mergel"/> shows the <function>vec_mergel</function> operation in action for two <type>vector unsigned int</type>s.</para>
+
+<figure id="BVP:vec_mergel">
+	<title>AltiVec <function>vec_mergel</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_mergel.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>It turns out the merge operations work very well at transposing a matrix. If we have a $4\times4$ matrix stored in four <type>vector float</type>s, we can use the following function to transpose the vector in place:</para>
+
+<programlisting>
+<![CDATA[
+inline void vec_transpose(vector float *a0, vector float *a1,
+                     vector float *a2, vector float *a3)
+{
+    vector float t0, t1, t2, t3;
+    t0 = vec_mergeh(*a0,*a2);
+    t1 = vec_mergeh(*a1,*a3);
+    t2 = vec_mergel(*a0,*a2);
+    t3 = vec_mergel(*a1,*a3);
+    *a0 = vec_mergeh(t0,t1);
+    *a1 = vec_mergel(t0,t1);
+    *a2 = vec_mergeh(t2,t3);
+    *a3 = vec_mergel(t2,t3);                                
+}
+]]>
+</programlisting>
+
+<para>We will use this routine later when we are performing matrix-matrix multiplies to transform our data into the proper format for the AltiVec engine.</para>
+
+<para>The <function>vec_sel(a,b,c)</function> selection operation works on vectors at the bit level, so does not concern itself with element size or vector type. The <function>vec_sel</function> operation's <varname>c</varname> vector is used to determine which vector <varname>a</varname> or <varname>b</varname> each bit in the result vector will come from. For every bit <varname>d[i]</varname> in the result vector <varname>d</varname>:</para>
+
+<programlisting>
+<![CDATA[
+d[i] = (c[i] == 0 ? a[i] : b[i]);
+]]>
+</programlisting>
+
+<para>The various shift operations available offer a range of whole-vector, intra-vector and inter-vector versions. The <function>vec_sl(a,b)</function> (shift left) and <function>vec_sr(a,b)</function> (shift right) operations shift each element of <varname>a</varname> left or right by the number of bits specified in vector <varname>b</varname>, zero-filling behind. Note that each vector element can be shifted by a different amount in these routines. <function>vec_sll(a,b)</function> shift left long and <function>vec_srl(a,b)</function> (shift right long) shift the entire vector left or right by the amount specified in the last three bits of vector <varname>b</varname>'s last element, zero-filling behind. <function>vec_slo(a,b)</function> (shift left octet) and <function>vec_sro(a,b)</function> (shift right octet) shift vector <varname>a</varname> in byte-sized chunks, specified by bits 1:4 in vector <varname>b</varname>'s last element. <function>vec_sra(a,b)</function> (shift right algebraic) operates like <function>vec_sr</function>, except instead of zero-filling, fills with the sign bit of each element. <xref linkend="BVP:shifts"/> shows examples of these shift operations.</para>
+
+<figure id="BVP:shifts">
+	<title>AltiVec Shift Operations</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_shifts.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Finally, there is <function>vec_sld(a,b,c)</function> (shift left double), which we have seen before in our dot product implementation. This operation shifts vector <varname>a</varname> left by <varname>c</varname> bytes, filling in with the same number of bytes from the left side of vector <varname>b</varname>. <xref linkend="BVP:vec_sld"/> shows the <function>vec_sld</function> operation in action. <xref linkend="BVP:vec_sld_b"/> shows how the shift in combination with the <function>vec_add</function> instruction was used to sum across a vector of floats.</para>
+
+<figure id="BVP:vec_sld">
+	<title>AltiVec <function>vec_sld</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_sld.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<figure id="BVP:vec_sld_b">
+	<title><function>vec_sld</function> Used to Sum Across a Vector</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_sld_b.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The rotate operation <function>vec_rl(a,b)</function> rotates the each element of <varname>a</varname> left by the number of bits specified in <varname>b</varname>. Figure <xref linkend="BVP:vec_rl"/> shows this rotation for a <varname>vector unsigned short a</varname>.</para>
+
+<figure id="BVP:vec_rl">
+	<title>AltiVec <function>vec_rl</function> Operation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_rl.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+	</sect3>
+	<sect3>
+		<title>Memory Operations</title>
+
+<para>The AltiVec programming environment includes a number of memory operations that aid in loading aligned and unaligned vectors from memory, loading and storing individual vector elements, and optimizing memory access for vector data. Memory operations are very important to the design of optimized altivec routines. The biggest bottleneck for the AltiVec engine is data, which in turn is limited by memory bandwidth. For now, we will save the advanced optimization techniques for the next chapter, and focus on the memory operations that support more mundane AltiVec algorithm issues.</para>
+
+<para>Of the <function>vec_lde(a,b,c)</function> and <function>vec_ste(a,b,c)</function> operations, we have already seen <function>vec_ste</function> in action in our dot product example:</para>
+
+<programlisting>
+<![CDATA[
+float altivec_dot_product(vector float a, vector float b) 
+{
+    vector float zero = (vector float) vec_splat_s8(0);
+    vector float tmp;
+    float c;
+    int i;
+
+    tmp = vec_madd(a, b, zero);
+    tmp = vec_add( tmp, vec_sld( tmp, tmp, 4));
+    tmp = vec_add( tmp, vec_sld( tmp, tmp, 8));
+    
+    vec_ste(tmp, 0, &c);
+    return c;
+}
+]]>
+</programlisting>
+
+<para>The next-to-last line in this function stored the element at index 0 of the <varname>tmp</varname> vector register to the scalar variable <varname>c</varname>. The <function>vec_lde</function> operation works in the same way, but instead of moving an element from a vector register to a scalar memory location, it moves a scalar value pointed to by <varname>c</varname> into an element location <varname>b</varname> in a vector register <varname>a</varname>.</para>
+
+<para>To load entire vectors, you can use the <function>vec_ld(a,b)</function> and <function>vec_st(a,b,c)</function> operations. for <function>vec_ld</function>, <varname>b</varname> is a pointer to a memory location, and <varname>a</varname> is an index that can be used for stepping through memory. For <function>vec_st</function>, <varname>a</varname> is the vector to be stored, <varname>b</varname> an index, and <varname>c</varname> the memory location where <varname>a</varname> is to be stored. Both of these operations assume that the pointer to memory plus index is 16-byte aligned. The AltiVec engine will silently truncate the address to the lower 16-byte aligned address.</para>
+
+<para>If you <emphasis>must</emphasis> load or store misaligned vectors you will need to use the <function>vec_lvsl(a,b)</function> and <function>vec_lvsr(a,b)</function> these two functions return <type>vector unsigned char</type>s that make perfect permutation vectors for loading unaligned data. The following function takes a pointer to a vector at an arbitrary memory location, and returns the proper vector.</para>
+
+<programlisting>
+<![CDATA[
+vector unsigned char vec_ldua( vector unsigned char *v )
+{
+    vector unsigned char perm = vec_lvsl( 0, (int*) v);
+    vector unsigned char low = vec_ld( 0, v );
+    vector unsigned char high = vec_ld( 16, v);
+    return vec_perm( low, high, perm );
+}
+]]>
+</programlisting>
+
+<para>Since this function loads and permutes the vectors on a byte-by-byte basis, you can cast the argument and return to any vector type you wish. <xref linkend="BVP:vec_unaligned"/> shows how this function would work with an vector with a memory location that ended in 0x08.</para>
+
+<figure id="BVP:vec_unaligned">
+	<title>Loading an Unaligned Vector</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_unaligned.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Storing a vector back to an unaligned memory location is a little more difficult:</para>
+
+<programlisting>
+<![CDATA[
+void vec_stua( vector unsigned char a, vector unsigned char *v )
+{
+    // load the aligned vectors around our unaligned vector
+    vector unsigned char low = vec_ld( 0, v );
+    vector unsigned char high = vec_ld( 16, v);
+
+    // create a mask that will allow us to select which areas 
+    // of the low and high vectors we want to write our vector
+    vector unsigned char perm = vec_lvsr( 0, (int*) v);
+    vector unsigned char vcones = vec_splat_u8( -1 );
+    vector unsigned char vczero = vec_splat_u8( 0 );
+    vector unsigned char mask = vec_perm( vczero, vcones, perm );
+
+    // rotate the source data vector
+    a = vec_perm( a, a, perm);
+
+    // create the low and high aligned vectors
+    // by using the mask to determine
+    // which part of the new vector is from the 
+    // memory location, and which part is from
+    // the source vector 
+    low = vec_sel( a, low, mask );
+    high = vec_sel( high, a, mask );
+
+    // store the vectors back into their aligned positions
+    vec_st( low, 0, v );
+    vec_st( high, 16, v );
+}
+]]>
+</programlisting>
+
+<para>Storing a vector to an unaligned location is difficult because we risk overwriting the areas around our vector's memory location. As in <xref linkend="BVP:vec_unaligned"/>, our vector stradles a 16-byte boundary. In order to preserve any data that might be in the locations around our vector, we must first load the aligned areas from memory, create new vectors that are a combination of the memory locations and our vector source, and then store these vectors back to the aligned locations. <xref linkend="BVP:vec_stua"/> shows this process.</para>
+
+<figure id="BVP:vec_stua">
+	<title>Storing an Unaligned Vector</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/bvector/figures/vec_stua.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>In either case&mdash;loading or storing unaligned vectors--you can see why you are urged to avoid it. The drum was pounded loud and often in the last chapter to avoid optimization until you know where your code is slow. Because memory organization can be very deeply rooted in programs, even if you are not <emphasis>sure</emphasis> you are going to use AltiVec, this is one area where it is best to do a little pre-planning. Try to make sure your data is 16-byte aligned. When it turns out that the 80-20 rule strikes a procedure that <emphasis>is</emphasis> vectorizable, you won't have to completely rewrite large areas of your code to account for memory alignment.</para>
+
+<para>The memory operations shown in <xref linkend="BVP:ds_ops"/> are used to optimize memory access by AltiVec code. In brief, they allow you to manage the streaming of data from memory so that it will be ready when you code calls for it, and can provide a serious speed boost when working with large amounts of data.</para>
+
+<table id="BVP:ds_ops">
+	<title>AltiVec Data Stream Operations</title>
+	<tgroup cols="3">
+	<tbody><row><entry></entry></row></tbody>
+	</tgroup>
+</table>
+<programlisting>
+<![CDATA[
+[ht]
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+<function>vec_dss</function> & data stream stop \\ \hline
+<function>vec_dssall</function> & data stream stop all \\ \hline
+<function>vec_dst</function> & data stream touch \\ \hline
+<function>vec_dstst</function> & data stream touch for store \\ \hline
+<function>vec_dststt</function> & data stream touch for store transient \\ \hline
+<function>vec_dstt</function> & data stream touch transient \\ \hline
+\end{tabular}
+\end{center}
+\caption{}
+]]>
+</programlisting>
+
+<para>The last four memory operations are <function>vec_ldl</function> and <function>vec_stl</function>, which are cache conscious load and store operations, and <function>vec_mfvscr</function> and <function>vec_mtvscr</function>, which allow you to get at the vector unit's status control register. In the next chapter we will see why you might need to use these four operations.</para>
+
+<para>And with that, you have seen all one hundred and thirteen operations provided by the AltiVec programming interface. To be sure, we have left quite a lot on the table. For a breakdown and description of every operation you can use the quick reference guide in <xref linkend="AO"/>. For the most detailed information, I urge you to have the Motorola documentation mentioned in <xref linkend="BVP:references"/> at hand. Hopefully by now you have a good idea of what tools are in the garage. In the next section we will take a look at putting some of them to good use.</para>
+
+	</sect3>
+	</sect2>
+</sect1>
+<sect1>
+	<title>Vectorization in Action</title>
+
+<para>Now that we have had a chance to look at all of AltiVec's features, let's try putting it to good use in our ever handy matrix class <classname>RRMatrix</classname>. In the last chapter we looked at issues related to creating efficient Objective-C classes, and got <classname>RRMatrix</classname> into pretty good shape. We are now going to look at how we can optimize the class further my implementing the matrix-matrix multiply method <function>multiply:in:</function> with AltiVec.</para>
+
+<para>We are actually going to first create a subclass of <classname>RRMatrix</classname> called <classname>RRAVMatrix</classname> with which we will implement our AltiVec optimized version. The header file <filename>RRAVMatrix.h</filename> looks like this:</para>
+
+<programlisting>
+<![CDATA[
+#import <Foundation/Foundation.h>
+#import "RRMatrix.h"
+
+@interface RRAVMatrix : RRMatrix {
+}
+
+@end
+]]>
+</programlisting>
+
+<para>In this case, our goal is not to add any functionality, but to reimplement some of it, so our header file is pretty sparse.</para>
+
+<para>For our implementation we are going to be overriding two of the methods of our <classname>RRMatrix</classname> class: <function>initWithRows:columns:</function> and <function>multiply:in:</function>. For our initialization method, we are going to take the time to make sure that our rows are aligned in memory:</para>
+
+<programlisting>
+<![CDATA[
+- (id)initWithRows:(unsigned int)rowCount columns:(unsigned int)columnCount
+{
+    int i;
+    float *array;
+
+    // get the number of whole vectors that
+    // will hold one row of this matrix
+    int columnVectorCount = (columnCount + 3)/4;
+
+    if(self = [super init]) {
+        m = rowCount;
+        n = columnCount;
+
+        // allocate the data for this matrix to fit whole vectors
+        array = malloc(sizeof(vector float)*rowCount*columnVectorCount);
+        data = (float**)malloc(sizeof(float*)*m);
+
+        // point each row pointer in data to the 
+        // aligned location
+        for(i = 0; i < m; i++) 
+            data[i] = &(array[i*columnVectorCount*4]);
+    }
+
+    return self;
+}
+]]>
+</programlisting>
+
+<para>The code in this routine makes sure that we are allocating our rows in whole-vector multiples, that way, even if the matrix size is not a multiple of four, each row will fall on a 16-byte boundary. <xref linkend="BVP:altivec_alignment"/> shows how the <varname>float **data</varname> is allocated for a $9\times9$ matrix.</para>
+
+<figure id="BVP:altivec_alignment">
+	<title>\textsf{RRMatrix</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/bvector/figures/altivec_alignment.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>This figure clearly shows how this approach to alignment can be wasteful. As we saw with the routines used to load and store unaligned vectors though, working with unaligned data can really slow us down. It is a tough tradeoff. For now, we are going to focus on the simplest solution, and make sure our data is aligned from the outset. In the next chapter we will see why this may not in fact be the fastest solution, and what we might do to further optimize our implementation.</para>
+
+<para>Now that we know our matrix rows will always begin on a 16-byte boundary, lets see what our AltiVec optimized matrix-matrix multiply method <function>multiply:in:</function> looks like:</para>
+
+<programlisting>
+<![CDATA[
+- (void)multiply:(RRMatrix*)rhs in:(RRMatrix*)place
+{
+
+    // keeping with standard terminology,
+    // the multiplication is C = A*B, with
+    // A an m x n matrix, B an n x p matrix and C an m x p matrix. 
+    int i, j, k;
+    int p = [rhs columns];
+    float **C = [place data];
+    float **A = data;
+    float **B = [rhs data];
+
+    // hold 4x4 blocks of A, B, C
+    vector float ar0, ar1, ar2, ar3;
+    vector float bc0, bc1, bc2, bc3;
+    vector float cr0, cr1, cr2, cr3;
+
+    // these vectors will hold our temporary
+    // values that we accumulate while
+    // moving through the matrix
+    vector float t00, t01, t02, t03;
+    vector float t10, t11, t12, t13;
+    vector float t20, t21, t22, t23;
+    vector float t30, t31, t32, t33;
+
+    // loop over the columns of B - 4 columns at a time
+    for (j=0; j < p; j+=4) {
+
+        // loop over the rows of A - 4 rows at a time
+        for (i=0; i < m; i+=4)  {
+
+            // zero out our temporary vectors
+            t00 = t01 = t02 = t03 =
+                t10 = t11 = t12 = t13 =
+                t20 = t21 = t22 = t23 =
+                t30 = t31 = t32 = t33 = vfneg_zero();
+
+            // loop over columns of A - again, 4 rows at a time
+            for (k=0; k < n; k+=4) {
+
+                // load four rows of A at a time
+                // this gives us a 4x4 block of A
+                ar0 = vec_ld(0, &A[i][k]);
+                ar1 = vec_ld(0, &A[i+1][k]);
+                ar2 = vec_ld(0, &A[i+2][k]);
+                ar3 = vec_ld(0, &A[i+3][k]);
+
+                // load a 4x4 block like we did for A
+                // notice that as we move across the 
+                // columns of A, we are moving down
+                // the rows of B
+                bc0 = vec_ld(0, &B[k][j]);
+                bc1 = vec_ld(0, &B[k+1][j]);
+                bc2 = vec_ld(0, &B[k+1][j]);
+                bc3 = vec_ld(0, &B[k+1][j]);
+
+                // the matrix-matrix multiply is actually
+                // a series of dot-products on 
+                // matrix A's rows, and B's columns
+                // transpose our block of B so that our
+                // vectors are actually the columns of B
+                vec_transpose(&bc0, &bc1, &bc2, &bc3);
+
+                // perform a mmmul of the two 4X4
+                // submatrices we now have
+                t00 = vec_madd(ar0, bc0, t00);
+                t01 = vec_madd(ar0, bc1, t01);
+                t02 = vec_madd(ar0, bc2, t02);
+                t03 = vec_madd(ar0, bc3, t03);
+
+                t10 = vec_madd(ar1, bc0, t10);
+                t11 = vec_madd(ar1, bc1, t11);
+                t12 = vec_madd(ar1, bc2, t12);
+                t13 = vec_madd(ar1, bc3, t13);
+
+                t20 = vec_madd(ar2, bc0, t20);
+                t21 = vec_madd(ar2, bc1, t21);
+                t22 = vec_madd(ar2, bc2, t22);
+                t23 = vec_madd(ar2, bc3, t23);
+
+                t30 = vec_madd(ar3, bc0, t30);
+                t31 = vec_madd(ar3, bc1, t31);
+                t32 = vec_madd(ar3, bc2, t32);
+                t33 = vec_madd(ar3, bc3, t33);
+            }
+
+            // here we sum across the products
+            // we have accumulated to produce
+            // the final values in the 4x4 block
+            // of C we are currently computing
+            t00 = vec_add(t00, t01);
+            t02 = vec_add(t02, t03);
+
+            t10 = vec_add(t10, t11);
+            t12 = vec_add(t12, t13);
+
+            t20 = vec_add(t20, t21);
+            t22 = vec_add(t22, t23);
+
+            t30 = vec_add(t30, t31);
+            t32 = vec_add(t32, t33);
+
+            cr0 = vec_add(t00, t02);
+            cr1 = vec_add(t10, t12);
+            cr2 = vec_add(t20, t22);
+            cr3 = vec_add(t30, t32);
+
+            // store this block back into C
+            vec_st(cr0, 0, &(C[i][j]));
+            vec_st(cr1, 0, &(C[i+1][j]));
+            vec_st(cr2, 0, &(C[i+2][j]));
+            vec_st(cr3, 0, &(C[i+3][j]));
+
+        }
+    }
+}
+]]>
+</programlisting>
+
+<para>In essence, this optimized matrix-matrix multiply breaks down our matrix into 4x4 blocks, made up of four <type>vector float</type>s, and computes the solution for each block in turn. <xref linkend="BVP:altivec_blockmm"/> depicts graphically the breakdown of which vector components from each matrix contribute to the final result for each block. The outer two loops move this $4\times4$ block around the result matrix, using the rows from A and columns from B to compute the solution. The one tricky aspect of this implementation is the fact that matrix B is really stored in row-major format, as are all of our matrices. This means that the blocks from matrix B must be transposed in order to be able to operate on them as four <type>vector float</type> objects. Here we use our handy <function>vec_transpose()</function> routine presented earlier. As an example, if we have matrices $A_{8\times8}$ and $B_{8\times8}$, and partition them into $4\times4$ blocks so that:</para>
+
+<programlisting>
+<![CDATA[
+\left[
+\begin{matrix}
+C_{11} & C_{12} \\
+C_{21} & C_{22} \\
+\end{matrix}
+\right]
+=
+\left[
+\begin{matrix}
+A_{11} & A_{12} \\
+A_{21} & A_{22} \\
+\end{matrix}
+\right]
+\left[
+\begin{matrix}
+B_{11} & B_{12} \\
+B_{21} & B_{22} \\
+\end{matrix}
+\right]
+]]>
+</programlisting>
+
+<para>then we can compute each block in $C$ by:</para>
+
+<programlisting>
+<![CDATA[
+C_{ij} = A_{i1}B_{1j} + A_{i2}B_{2j}
+]]>
+</programlisting>
+
+<figure id="BVP:altivec_blockmm">
+	<title>Vector Components Contributing to the Matrix-Matrix Multiply Solution</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/bvector/figures/altivec_blockmm.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Just for reference, I would like include a copy of what the non-optimized matrix-matrix multiply looks like:</para>
+
+<programlisting>
+<![CDATA[
+- (void)multiply:(RRMatrix*)rhs in:(RRMatrix*)place
+{
+    int i, j, k, p = [rhs columns];
+    float **C = [place data];
+    float **A = [self data];
+    float **B = [rhs data];
+
+    for(i = 0; i < m; i++) {
+        for(j = 0; j < n; j++) {
+            C[i][j] = 0.0;
+            for(k = 0; k < p; k++) {
+                C[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
+}
+]]>
+</programlisting>
+
+<para>As a programmer coming along two years after-the-fact, which routine would you prefer to have to deal with? If this example doesn't send you screaming for the exits, nothing will. Vectorized code, like all optimization, can be rather obtuse to the casual observer. Many times when working on AltiVec code, you could (and still can) find me hunched over for hours with pencil and paper in hand drawing funny blocks and arrows trying to figure out what a piece of code was actually doing. Check out the resources listed at the end of the chapter, and make sure to check the <ulink url="www.altivec.org"/> website and mailing list. There is a very useful community of developers that have probably already dealt with the same problem you might be having, and it is all archived for you to use.</para>
+
+</sect1>
+<sect1>
+	<title>Determining When to Vectorize</title>
+
+<para>When considering whether code is a good candidate for vectorization, it almost always comes down to data.</para>
+
+<itemizedlist>
+	<listitem><para>Do your algorithms lend themselves to implementation with the vector routines?</para>
+	</listitem>
+	<listitem><para>Does your data, and more importantly its memory layout, lend itself to vectorization?</para>
+	</listitem>
+	<listitem><para>Know where your speed problems exists!</para>
+	</listitem>
+</itemizedlist>
+
+<para>It is often the case that traditional algorithms are presented in a way that does not lead to a simple implementation using a vector engine, as most of them were developed for traditional scalar arithmetic units. Of additional critical importance to those working with floating point numbers is AltiVec's single-precision floating-point limitation. Are the condition and stability of the algorithms you are using suitable for single-precision? Most traditional algorithms were designed when using double-precision floating point was a huge performance hit - or was not even available. <emphasis>Gaussian elimination</emphasis> with partial or complete pivoting is a good example of what can be done to try and control floating point error. Even so, some analysis reach the limits of floating-point sooner than others. <emphasis>Bayesian</emphasis> techniques, for example, will reach the limits of float-point accuracy very quickly. In the next chapter, we will take a look at how to detect and deal with the single-precision AltiVec limitations in your code.</para>
+
+<para>When programming to take advantage of the AltiVec unit, or any vector machine for that matter, there is rarely a one-to-one correspondence between an algorithm or equation and its implementation. In almost all cases, you will find that the vector operations in the AltiVec implementation take one component from each of two vectors, perform an operation on them, and put the result in the equivalent location in the resultant vector:</para>
+
+<programlisting>
+<![CDATA[
+	c_i = a_i\ \textbf{op}\ b_i
+]]>
+</programlisting>
+
+<para>This may lead to awkward data layout for vectorization. don't be afraid to change your data format. Instead of vectors that look like: <literal>[w, x, y, z], [w, x, y, z], [w, x, y, z], [w, x, y, z]</literal> try instead organizing your data like: <literal>[w, w, w, w], [x, x, x, x], [y, y, y, y], [z, z, z, z]</literal>. If you find that you are using many permutation operations to get your data into the right form, then you either need to rethink your data layout, or your problem may not be a good candidate for vectorization. The matrix-matrix multiply makes a good example as it requires only one transformation per pass to get the data in the right shape - and this transformation is only needed for one of the matrices.</para>
+
+<para>The AltiVec engine needs data--lots of it. For it to work at top speed, you will need to make sure you are feeding it data as fast as possible. In this age of write-once, run-anywhere, AltiVec programming seems a throwback. To get the most advantage out of AltiVec, you will need to concern yourself with things like pipelines, clock cycles, caches and memory bandwidth. While daunting at first, there are only a few fundamental concepts to watch out for, and the rewards can definitely be worth it as we saw with our optimized AltiVec dot product implementation. In the next chapter we will look at how memory, and its direct management can have an enormous impact on the success of your AltiVec code.</para>
+
+<para>Primarily, this chapter has been about the <emphasis>hows</emphasis> of AltiVec programming--that is, how to get something done. This, it turns out, is only half the battle. In the next chapter we are going to look at the more advanced issues intrinsic in programming for AltiVec, and what is required to make sure your code is getting the most benefit from vectorizing. The irony of course is that we turned to AltiVec in order to optimize our scalar code, and now we are going to start optimizing our optimization! Will this madness never stop? Probably not--which is exactly why optimization should only be carried out after we understand our code's behavior intimately, and can make the determination that it is actually worth the effort. Otherwise, as we get distracted by ever tinier minut\'{e}, we never get to the point of solving the problem we were looking to fix in the first place.</para>
+
+</sect1>
+<sect1>
+	<title>Errors</title>
+
+<para>Here are some common errors you might run across in <application>ProjectBuilder</application> when programming for AltiVec that have been mentioned throughout the chapter.</para>
+
+<variablelist>
+	<varlistentry>
+	<term><literal>illegal statement, missing `;' after `vector'</literal></term>
+	<term><literal>`vector' undeclared</literal></term>
+	<listitem><para>You have not set the <literal>-faltivec</literal> flag in ProjectBuilder, or from the command-line.</para>
+	</listitem>
+	</varlistentry>	
+	<varlistentry>
+<term><literal>too few initializers</literal>.</term>
+<listitem><para>If you receive this error, it means that you have not provided enough values in your vector literal statement. For example, an <type>vector unsigned char</type> expects either 1 or 16 values. A <type>vector float</type> expects 1 or 4.</para></listitem>
+	</varlistentry>
+	<varlistentry>
+<term><literal>warning: unknown conversion type character `v' in format</literal>,</term> 
+	<listitem><para>the release notes for the Apple developer tools say it best: <quote>library support for vec_new(), vec_malloc(), vec_free(), etc., as well as vector extensions to standard I/O functions such as printf(), are not present.</quote></para></listitem>
+	</varlistentry>
+	<varlistentry>
+	<term><literal>no instance of overloaded builtin function [function name] matches the parameter list</literal>,</term>
+	<listitem><para>This typically means that you are trying to pass in an argument that AltiVec doesn't accept for the operation. For example, you might be trying to send a <type>vector float</type> into an integer only operation.</para></listitem>
+	</varlistentry>
+</variablelist>
+
+</sect1>
+<sect1 id="BVP:references">
+	<title>References</title>
+
+<para>For AltiVec, the last word is from the source itself:</para>
+<variablelist>
+	<varlistentry><term>AltiVec Technology Programming Environments Manual</term>
+	<listitem><para>
+	<ulink url="http://e-www.motorola.com/brdata/PDFDB/docs/ALTIVECPEM.pdf"/>
+	</para></listitem>
+	</varlistentry>
+
+	<varlistentry><term>AltiVec Technology Programming Interface Manual</term>
+	<listitem><para>
+	<ulink url="http://e-www.motorola.com/brdata/PDFDB/docs/ALTIVECPIM.pdf"/>
+	</para></listitem>
+	</varlistentry>
+</variablelist>
+
+<para>You will also probably want to have handy the user manual for your processor. While not necessary, it can come in handy when you want to look up items such as the binary representation of an opcode that gdb is not displaying properly, or the number of cycles an instruction takes to complete, which will be dependent on your specific processor version.</para>
+
+<variablelist>
+<varlistentry><term>MPC7410 Microprocessor User's Manual</term>
+	<listitem><para>
+<ulink url="//e-www.motorola.com/brdata/PDFDB/docs/MPC7410UM.pdf"/>
+	</para></listitem>
+	</varlistentry>
+<varlistentry><term>MPC7450 Microprocessor User's Manual</term>
+	<listitem><para>
+<ulink url="//e-www.motorola.com/brdata/PDFDB/docs/MPC7450UM.pdf"/>
+	</para></listitem>
+	</varlistentry>
+</variablelist>
+
+<para>Some additional Web resources:</para>
+
+<itemizedlist>
+<listitem><para>Apple's Velocity Engine site is a great resource for AltiVec on OSX, and OS9, with tutorials, sample code, and additional resources:
+<ulink url="//developer.apple.com/hardware/ve/"/></para></listitem>
+<listitem><para>The Altivec.org web site: <ulink url="//www.altivec.org"/>. has many useful links, as well as a must-read mailing list if you are serious about using AltiVec.</para></listitem>
+
+<listitem><para>Ian Ollmann has a very good AltiVec tutorial, along with sample code at: <ulink url="//idisk.mac.com/simd/Public"/></para></listitem>
+</itemizedlist>
+
+
+</sect1>
+
+</chapter>

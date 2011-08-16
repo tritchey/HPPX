@@ -1,0 +1,134 @@
+<chapter id="MEM">
+	<title>Memory</title>
+
+<para>When talking about an object's lifecycle, we are referring to everything
+that happens from the time it is created to the time it is destroyed.
+Just like real life objects, every object in your program consumes
+environmental resources while being made, during its lifetime, and
+finally being destroyed. These resources may be processor clock cycles,
+memory usage, or I/O with the network or a disk. No matter what the
+case, ultimately it is a consumption of the most scarce resource of all:
+time.</para>
+
+<sect1>
+	<title>The OS X Memory Manager</title>
+		<para>todo: compare Darwin MM to NT/Linux/Solaris, etc.</para>
+</sect1>
+	
+<sect1>
+	<title>Looking at Memory Usage</title>
+		<para>todo</para>
+		
+		<para>explain <command>top</command></para>
+		
+<para>this number is nothing special. You should use top -w and look onto VPRVT  RPRVT(delta) columns to see the "real" numbers.
+Check man top for explanations.
+
+This is not the amount of memory it uses, first of all vram is video ram,
+you're probably refering to the VSIZE, vsize is the total size of the
+allocated addressing space, note this includes any libraries, bundles etc
+the process loads. 
+As you might know each process runs in it's own addressing space on MacOS X,
+Which is necessary to implement protected memory, the amount of memory it
+actually uses are reflected in the RSIZE.</para>
+</sect1>
+	
+<sect1>
+	<title>UNIX Memory Allocation</title>
+		<para>malloc. Individual calls return aligned memory (what is the step size? 1K, page size, etc.). If you are using MANY small objects, better to use a pool design.</para>
+
+<para>
+Alignment of structure depending on start element size, unintended padding?
+1) The struct starts with a double. This means that sizeof must be a multiple of sizeof(double) to preserve alignment in the case that you have an array of the structs
+2) This particular struct ends up leaving 4 bytes at the end of the struct unused due to the padding inserted for #1
+3) Since this struct is used as a superclass, the compiler somehow realizes that you *cannot* have an array of the structs and thus the extra four bytes at the end of the superclass is free for use by the subclass.  Thus, the first member of my subclass gets packed into the area 'owned' by the superclass.
+</para>
+
+<para> from BadAndy:
+MacArsian Bloodhounds on the trail..... 
+
+Folks, before going to more discussion... I think this thread is an example of MacAch at it's best and also the general value of a significant user group ... a problem gets posted, folks chime in, information comes in quicker and at lower individual cost (and across more systems) than any one person could easily manage... and we are getting somewhere.
+
+Dete makes some good general background points ... one of which I needed to be reminded of (once I saw it I said "I knew that" ... but I hadn't been thinking of it earlier):
+
+quote:
+
+So there's two levels of memory allocation going on here: malloc(), the "high level" (which can allocate buffers of any size) and the low level system allocator (vm_alloc?), which always allocates a page at a time.
+
+When you allocate a page at the low-level, nothing really happens except that an extra page is added to the VM table for that process, and the addressing space is reserved.
+
+Only when you access that addressing space does something "really" happen: A page of physical memory gets assigned to that process, possibly causing someone else's page to be swapped to disc.
+
+Newly allocated pages are *always* zero'd out in Unix, when you first access them. This is a security feature to keep you from being able to read the data from other processes. (Interesting aside: This is the reason why the C language specification guarantees that global variables will be zero in a newly launched program...) To be clear: it is not malloc() that is writing zeros to these blocks, it is the OS.
+
+{snip}
+
+What this means is that for small allocations, such as those used in the original example, malloc touches every page and thus the VM system must create real pages for each allocated block, swapping out everyone else's pages, and eventually its own.
+
+
+
+
+It's this last issue about the zeroing which is important in the context of understanding what this bomb does at runtime ... it is actually creating pages, filling them with zeros ( zeroing is very efficient on G4/G4+ because it can be done with dcbz instructions... which zero whole cache-blocks without reading them in first), and then it is creating the local datastructures for the allocated memory.
+
+{incidentally, in the real-time hardware OS domain I play in, the zeroing generally doesn't occur because security is derogated in the interest of speed ... security is that these are closed systems with no external users, and are generally running a static locked-down complete code-store, and processes "browsing" other processes paged-out space is presumed to be irrelevant )
+
+Dete is correct about this in Unix, but it doesn't change my fundamental characterization of this as a bug. Of course, folks need to understand that I am an absolute hardnosed purist in these regards, coming from a hardware/embedded/realtime high-reliability perspective ... but then the whole point of a modern multi-tasking OS is to deliver the highest reliability and security it can. IMO anything that baldly compromises this is absolutely a bug.
+
+
+quote:
+
+
+About Bad Andy's assertion that it is a bug: First, as I explained above, since malloc is writing to those pages, as far as the kernel is concerned those pages *are* being used. So the malicious code is allocating AND USING as much memory as it will be allowed. So what's the bug? That a user-level process can initiate enough swapping so that other user-level processes are unusable? It's not ideal, but I'm not sure you can call it a bug. 
+
+
+
+It is a bug because it is a trivial mechanism for denial-of-service attacks ... and by definition we expect no single user to be able to halt services for other user processes OR processes at higher priorities. Incidentally, in this context the discussion hasn't included the issue of user level ... if this problem exhibited itself only if the process was launched from root then I would _still_ find this behavior "far less than ideal," but I might accept abstract notion that it is "not a bug... because root gives you the suicide switch if you are stupid enough in endless other ways too."
+
+The problem here is that this is a user-level disaster. To put it concretely... suppose I'm running a "real" big Unix machine with 500 first-year comp. sci. kiddies (BTDT ... as a grad-student TA) and every goddam time one of them makes a stupid endless memory allocation error the whole OS comes down. You going to argue this isn't a bug?
+
+OK, so will somebody post this to Apple's bug-tracker? (I've posted so many, and I'm not the originator here.) There is a reasonable chance this got fixed with Jaguar, but if not it needs to be fixed PRONTO. Folks, lets be honest ... this is an embarrassing bug to have so blatently in our faces. Competent programmers should have tested/thought about it. If this kind of thing were apparent on WinXP there would be howls of castigation from all sides about crapware ... what is sauce for the goose must be for the gander. Yes, Darwin/osX is still green, but this is an _embarrassing_ bug to have.
+
+Any decent VM/tasker needs to guard _resources_ for many processes as well as just time-slices. And inadvertent malloc bombs are so common as programming mistakes that it is just plain common sense that a VM hitting disc-storage-space limits (and thus faced with killing/crippling MANY running processes unless it makes a triage decision) should kill low-priority user-tasks as needed starting from the largest memory allocations down ... to keep higher priority tasks running.
+
+</para>
+
+<para>The POSIX API is the supported and recommended way of doing shared memory (shm_*).</para>
+</sect1>
+	
+<sect1>
+	<title>Objective-C Memory Allocation</title>
+	
+	<para>easy tool: use init and dealloc to store increment/decrement a global counter to see how many objects are around at the end of an application</para>
+
+		<para>look at alignment:<ulink url="http://www.mulle-kybernetik.com/artikel/Optimization/opti-2.html"/>
+
+use class-dump to look at offsets of instance variables</para>
+
+	<sect2>
+		<title>Autorelease Pools</title>
+
+<para>Autorelease Pools:
+SIGSEGV/SIGBUS at pool release means autoreleasing a released object with a *very high* probability
+</para>
+	</sect2>
+	<sect2>
+		<title>Zones</title>
+		<para>todo</para>
+	</sect2>
+        <sect2>
+                <title>Debugging Memory Allocation</title>
+                
+<para>Talk about zombies, etc. finding difficut memory problems from different threads, autorelease pools, etc. ObjectAlloc, MallocDebug, etc.</para>
+</sect1>
+
+<sect1>
+	<title>Strategies for Improving Memory Performance</title>
+		<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Shared Libraries</title>
+		<para>todo</para>
+</sect1>
+
+</chapter>

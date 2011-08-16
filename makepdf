@@ -1,0 +1,3 @@
+#!/bin/sh
+/sw/bin/openjade -t tex -V tex-backend -d /usr/local/share/dsssl/docbook/current/print/ldp.dsl#print /usr/local/share/dsssl/docbook/current/dtds/decls/xml.dcl $1.xml
+pdfjadetex $1.tex

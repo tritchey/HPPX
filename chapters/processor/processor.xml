@@ -1,0 +1,239 @@
+<chapter id="PROC">
+	<title>Processor</title>
+
+<sect1>
+	<title>Speeding Compile Times</title>
+		
+				
+	<sect2>
+		<title>Using <literal>#import</literal></title>
+			
+<para>TODO: describe <literal>#import</literal>, and the controversy with using it.</para>
+			
+	</sect2>
+		
+	<sect2>
+		<title>Have a little <literal>@class</literal></title>
+		
+<para>Using the <literal>#import</literal> functionality of the Objective-C language provides protection against importing a header file more than once; however, it does not protect you from importing header files that you don't need in the first place. Often in the Model-View-Controller (MVC) pattern, you will find yourself with <classname>controller</classname> objects that refer to, and by, both the <classname>model</classname>, and the <classname>view</classname>, side of the application. Traditionally, the <classname>view</classname> objects use <classname>AppKit</classname> and <classname>Foundation</classname>, while <classname>model</classname> objects only need to refer to <classname>Foundation</classname> objects. If you create your headers just right, you can over-complicate the build process by including <classname>AppKit</classname> headers in your <classname>Foundation</classname>-only classes. The following simple headers are a good example of this pathological behavior, from which <literal>#import</literal> isn't able to help us:</para>
+
+<programlisting> 
+<![CDATA[
+// MyController.h
+
+#import <Foundation/Foundation.h> 
+#import "MyModel.h" 
+#import "MyView.h"
+
+@interface MyController : NSObject { 
+    MyView *view; 
+    MyModel *model; 
+    ... 
+}
+... 
+@end
+
+// MyView.h
+
+#import <Cocoa/Cocoa.h> 
+#import "MyController.h"
+
+@interface MyView : NSView { 
+    IBOutlet NSButton* button;
+
+    MyController *controller; 
+} 
+... 
+@end
+
+// MyModel.h
+
+#import <Foundation/Foundation.h> 
+#import "MyController.h"
+
+@interface MyModel : NSObject { 
+    NSMutableArray *data; 
+    MyController *controller; 
+} 
+... 
+@end 
+]]>
+</programlisting>
+
+<para>Even though <classname>MyModel</classname> doesn't need to know anything about <classname>AppKit</classname> (or even <classname>MyView</classname> for that matter), in this layout, it ends up including it because it imports the header file for <classname>MyController</classname>, which in turn imports the header file for <classname>MyView</classname>, which <emphasis>does</emphasis> import the <classname>AppKit</classname> headers when it calls:</para>
+
+<programlisting><![CDATA[#import <Cocoa/Cocoa.h>]]></programlisting>
+
+<para>While precompiled headers will go a long way toward helping, you could fix this problem manually by rearranging how your classes interact. For example, you could make sure that <classname>MyModel</classname> knows nothing about the controller class. While good application design will prevent such dependencies, it doesn't always make sense to spend too much time worrying about nested imports three or four levels deep.</para>
+
+<para>One easy solution is to use Objective-C's <function>@class</function> expression to forward declare classes in header files. We could rearrange the previous header and implementation files as follows:</para>
+
+<programlisting> 
+<![CDATA[
+// MyController.h
+
+#import <Foundation/Foundation.h> 
+
+@class MyView, MyModel;
+
+@interface MyController : NSObject { 
+    MyView *view; 
+    MyModel *model; 
+    ... 
+}
+... 
+@end
+
+
+// MyController.m
+
+#import "MyController.h" 
+#import "MyModel.h" 
+#import "MyView.h"
+
+@implement MyController 
+...
+
+// MyView.h
+
+#import <Cocoa/Cocoa.h> 
+@class MyController;
+
+@interface MyView : NSView { 
+    IBOutlet NSButton* button;
+
+    MyController *controller; 
+} 
+... 
+@end
+
+// MyView.m
+
+#import "MyView.h" 
+#import "MyController.h"
+
+@implement MyView ...
+
+// MyModel.h
+
+#import <Foundation/Foundation.h> 
+@class MyController;
+
+@interface MyModel : NSObject { 
+    NSMutableArray *data; 
+    MyController *controller; 
+} 
+... 
+@end
+
+// MyModel.m
+
+#import "MyModel.h" 
+#import "MyController.h"
+
+@implement MyModel 
+... 
+]]>
+</programlisting>
+
+<para>Note that <emphasis>none</emphasis> of the header files include anything except the <classname>Foundation</classname> framework header. Instead, each header file uses <literal>@class</literal> to forward declare the class names specifically mentioned in the header file. We don't worry about the <classname>Foundation</classname> headers, since every Objective-C class must include it. Now, you know that no matter what custom header file you include, you will only get the class declarations in which you are interested.</para>
+
+<para>Now, when <classname>MyModel</classname> needs to include <filename>MyController.h</filename>, it does not drag along the <classname>AppKit</classname> header files to boot. This forward declaration of classes keeps header files free from extraneous baggage, and speeds the compile time for classes that are not interested in the entire &cocoa; object hierarchy. This works just as well to keep interdependence between classes in your own projects down as well.</para>
+
+<blockquote>
+<para> TIP: Consider forward declaring <emphasis>all</emphasis>
+non-foundation classes in your header files, and only <literal>#import</literal>
+their declarations in the implementation files. This will greatly reduce
+interdependencies and as a result also reduce build times. </para>
+</blockquote>
+		
+	</sect2>
+		
+	<sect2>
+		<title>Precompiled Headers</title>
+			
+<para>TODO:pfe</para>
+
+
+
+	</sect2>
+
+	
+</sect1>
+        
+<sect1>
+	<title>Looking at CPU Usage</title>
+		<para>todo</para>
+</sect1>
+	
+<sect1>
+	<title>Compiler Optimizations</title>
+		<para>todo</para>
+<para>		1. Don't use externs or static variables.
+2. If you are going to use an extern variable in a tight loop, don't use a local variable and assign it after the loop.
+3. Pass the option -mdyanmic-no-pic to gcc if the source is in the final program because it does not work in a boundle or a dynamic library (or framework).
+
+The AIX ABI/PEF ABI uses a register called the TOC for PIC code but it is stored with the function reference so you lose one register if the Darwin ABI goes over to the PEF ABI. You get one more register to play around with if you do not use extern or static variables.
+Why do people hate Muslims?</para>
+
+<para>Does anyone have a Cunning Strategy for how to work this out, or do you just
+pick semi-random addresses below 0x3fffffff?
+
+It doesn't matter, just ensure that it has an address on a page boundary. In 10.2, fix_prebinding will adjust things so they "just work".
+</para>
+
+<para>inline</para>
+<para>talk about dangers of using #define (check out stroustrup's latest on avoiding macros--bad. Show undefined behavior for something like #define cube(x) ((x)*(x)*(x)) when thrown *ptr++.</para>
+
+</sect1>
+	
+<sect1>
+	<title>Choosing Algorithms</title>
+		<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Traditional Hand Methods</title>
+		<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>&osx; Scheduling Considerations</title>
+		<para>todo</para>
+
+	<sect2>
+		<title>The &osx; Scheduler</title>
+		<para>todo</para>
+		
+<screen>
+Darwin has the equivalent capabilities of both the low latency and preemption patches floating around in the Linux world.  The Darwin design is geared more towards the preemption end than the low-latency end, however.
+
+There were some studies done with audio latencies that showed Mac OS X/Darwin having the best overall response times (especially under load).  These were done before the recent Linux mergers of the low-latency and preemption patches and also before Jaguar changes (that reduced Darwin scheduling latencies).
+
+I haven't seen anything published since then, but I think the results would be comparable (and quite acceptable for most "soft" realtime requirements).
+
+--Jim
+</screen>
+		
+	</sect2>			
+	
+	<sect2>
+		<title>Real-time Scheduling</title>
+		<para>todo</para>
+	</sect2>			
+		
+</sect1>
+
+
+
+<sect1>
+	<title>Modularizing Applications</title>
+	
+	<para>this section on dealing with frameworks, plugins, bundles, etc.</para>
+	<para>Talk about Umbrella Frameworks (find software on mamasam that shows what frameworks an umbrella framework provides)</para>
+	<para>Using Bundles</para>
+	<para>Plugin Architecture</para>
+	<para>weak linking</para>
+</sect1>
+
+</chapter>

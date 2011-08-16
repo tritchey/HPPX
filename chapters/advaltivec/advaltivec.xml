@@ -1,0 +1,60 @@
+<chapter id="AVEC">
+	<title>Advanced AltiVec Techniques</title>
+	
+	<sect1>
+		<title>Need to move over to XML</title>
+		<para>todo</para>
+<programlisting>
+<![CDATA[
+\chapter{}\label{AAT}
+
+- java mode
+- detecting processor
+
+\section{AltiVec Problems: Exceptions and Debugging}
+
+-altivec debug tools
+
+\section{Performance Considerations}
+
+- pipelinning
+
+- cycle time. latency vs. throughput
+
+- processor differences (7410 vs. 7450) look at dispatch reservation units into VPU and VALU. more parallelism in 7450 family.
+
+- a C op might map to more than one assembly. this means you need to 
+
+\subsection{Profiling AltiVec Code}
+
+simg4
+
+\subsection{Feeding The AltiVec Engine}
+
+- do an image of stalling the pipeline
+
+- once you start using altivec, the problem becomes one of feeding it fast enough.
+
+\section{Dealing With AltiVec's Limitations}
+
+talk about limitations of single precision vs. double, and that altivec only supports single precision. 
+
+- there are many ways around the problems of using single precision floating point numbers. Go t
+
+\section{Using the vecLib Framework}
+
+Thanks for the testing and benchmark results.  My understanding is that
+Apple did extensive optimizations in vDSP for single -and- double precision,
+independent of the AltiVec support for single precision.  So even in double
+precision, we should be getting a pretty hefty speed boost.  I'm glad to see
+that your benchmarks demonstrate that!
+
+\subsection{Basic Routines}
+\subsection{Vector Operations}
+\subsection{vBLAS}
+\subsection{vDSP}
+]]>
+</programlisting>
+</sect1>
+
+</chapter>

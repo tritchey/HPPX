@@ -1,0 +1,668 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN" "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd" [
+<!ENTITY % hppxents SYSTEM "../../HPPX.ent">
+%hppxents;
+]>
+
+<!--should you use the capacity setting? should speed things up.-->
+<!--CFTree (no NS equivalent right now)-->
+<!--priority queues?-->
+
+
+<chapter id="FOUNDATION">
+	<title>Foundation Framework</title>
+	
+<para>Programmers have become more and more accustomed to programming languages that include everything <emphasis>including</emphasis> the kitchen sink. Syntax and symantics aside, it is typically a language's standard libraries that make, or break, it acceptance. Objective-C's Foundation framework provides a number of features useful to application developers. The Foundation framework's object heirarchy can be broken down into the following categories:</para>
+
+<itemizedlist>
+<listitem><para>Objective-C Language Services</para></listitem>
+<listitem><para>Operating System Services</para></listitem>
+<listitem><para>Basic Data Structures</para></listitem>
+<listitem><para>Advanced Services</para></listitem>
+</itemizedlist>
+
+<para>The Foundation framework provides some of the expected Objective-C language objects that are not a part of the language-proper. These include classes for the autorelease pools, exceptions, and assertions, among others. In addition, there are a wide range of Operating System oriented classes covering host and process information, filesystem services, interprocess communication and threading. Some of the basic data structure classes are: value objects like dates and numbers, as well as strings and collection classes. Advanced features that the Foundation framework includes are: notifications, archiving and serialization, scripting and distributed objects.</para>
+
+<para>Appart from NSObject itself, the most used Foundation classes must be the containers. There probably aren't many Cocoa programmers among us that haven't used an <classname>NSArray</classname> or <classname>NSDictionary</classname> object as a quick data storage solution when we have a pile objects in need of a little organization, and are willing to put off a more thoughtful approach for later. Often, later never comes. By understanding the trade-offs between the different data structures up front, there is a better chance our decisions won't come back to bite us.</para>
+
+<para>At the end of the chapter we will also take a look at a design pattern that used used in many of the Foundation and AppKit classes: <emphasis>Class Clusters</emphasis>. Class clusters<footnote><para>Not to be confused with the clusters we will talk about in ???</para></footnote> are often used to simplify the job of the programmer when handling a number of related classes. The cluster's simplicity often traps unsuspecting programmers unaware when they attempt to create their own subclass of a custer's visible incarnation.</para>
+
+<sect1>
+	<title>Foundation Patterns</title>
+
+<para>Come up with a pattern example to start off the chapter</para>
+
+
+<para>The idea of locality is that programs are more likely to request program code and data close to the area that they are currently accessing.</para>
+
+</sect1>
+
+<sect1>
+        <title>CoreFoundation</title>
+<para>We spoke a little in the last chapter about the relationship of OS X's Core Foundation library with the Cocoa and Carbon programming environments. In most situations you do not need to directly interact with Core Foundation; however, there are certain situations in which you might find yourself needing to call Core Foundation functions, or handle Core Foundation classes.</para>
+
+<note><para>You will notice that I am refering to Core Foundation structures as classes, even though Core Foundation is written in proceedural C. While Core Foundation is written in C, it still has an object-oriented design. calling structures like CFArray a class is in keeping with the Core Foundation nomenclature; especially considering that with Toll-Free Bridging, the Core Foundation structures are interchangeable with their Obective-C counterparts.</para></note>
+
+<para>The primary reasons you might want to deal with Core Foundation are:</para>
+
+<orderedlist>
+<listitem><para>You are interfacing with a Carbon code-base, so you have no choice.</para></listitem>
+<listitem><para>You want to use a feature that exists in Core Foundation, but does not yet have a Foundation framework equivalent. For example, the Core Foundation XML support has not been extended to Objective-C.</para></listitem>
+<listitem><para>There is functionality for a class implemented in Core Foundation that is not yet exposed in its Objective-C counterparts.</para></listitem>
+</orderedlist>
+
+<para>It is primarily the later two reasons with which we will interest ourselves here.</para>
+
+<sect2>
+		<title>Toll Free Bridging</title>
+
+<para>Toll Free bridging is the term Apple gives to the ability to seamlessly pass C-based Core Foundation and Objective-C Foundation objects between the two libraries. For example, given a <classname>CFArrayRef</classname> from a Core Foundation routine, you can use that in your Objective-C code anywhere you would an <classname>NSArray</classname>. All Core Foundation classes start with the same structure:</para>
+
+<programlisting>
+<![CDATA[
+typedef struct __CFRuntimeBase {
+    void *_isa;
+#if defined(__ppc__)
+    uint16_t _rc;
+    uint16_t _info;
+#elif defined(__i386__)
+    uint16_t _info;
+    uint16_t _rc;
+#else
+#error unknown architecture
+#endif
+} CFRuntimeBase;
+]]>
+</programlisting>
+
+<para>That first element looks familiar doesn't it? That initial <literal>void</literal> pointer is all that is needed to allow a traditional C structure impersonate an Objective-C object. The rest of the <structname>CFRuntimeBase</structname> structure holds information used by CoreFoundation's internal house-keeping. Later on we will use the <literal>_info</literal> field to peer inside a Core Foundation container.</para>
+
+<para>It should be mentioned at this point that, while the <varname>_isa</varname> pointer at the beginning of a structure is an important aspect to what makes an object, there is much more that goes on within the Core Foundation library to support toll free bridging. Properly registering classes with the Objective-C runtime, as well as keeping reference counting syncronized across C and Objective-C code are only a couple of aspects to Core Foundation's integration with the Objective-C programming environment.</para>
+
+    </sect2>
+
+    <sect2>
+        <title>Memory Management</title>
+
+<para>The cornerstone of Objective-C and Cocoa memory management is <emphasis>reference counting</emphasis>. This is no different in Core Foundation. The only difference is the way in which it is carried out.</para>
+
+<para>All Core Foundation creation functions take an <varname>allocator</varname> reference as their first argument. For example, the creation function for a <classname>CFArray</classname> is:</para>
+
+<programlisting>
+<![CDATA[
+CFArrayRef CFArrayCreate ( 
+   CFAllocatorRef allocator, 
+   void **values, 
+   CFIndex numValues, 
+   const CFArrayCallBacks *callBacks 
+);
+]]>
+</programlisting>
+
+<para>If you want to use your own allocator, you are free to pass creation and copy functions your own custom object. For most purposes you can simply use the default allocator provided by Core Foundation. To use the default allocator you can either pass in <literal>NULL</literal> or <varname>kCFAllocatorSystemDefault</varname>.</para>
+
+<para>Just like the Foundation framework implementation, you are only responsible for releasing objects you have created, copied or retained. The function for releasing a Core Foundation object is:</para>
+
+<funcsynopsis><funcprototype>
+<funcdef>void <function>CFRelease</function></funcdef>
+<paramdef>CFTypeRef <parameter>cf</parameter></paramdef>
+</funcprototype></funcsynopsis>
+
+<para>The following code shows the creation of a <classname>CFArray</classname> object and its release:</para>
+
+<programlisting>
+<![CDATA[
+CFArrayRef array = CFArrayCreate(kCFAllocatorSystemDefault
+                                 values,
+                                 num,
+                                 &kCFTypeArrayCallBacks);
+
+// do something
+...
+
+CFRelease(array);
+]]>
+</programlisting>
+
+<para>If you have received a Core Foundation object through any other means (such as a collection's <function>get</function> method, you cannot be guaranteed what its lifetime will be. If you want it to stick around, it is a good idea to call <function>CFRetain</function> with the new object as the argument</para>
+
+<funcsynopsis><funcprototype>
+<funcdef>CFTypeRef <function>CFRetain</function></funcdef>
+<paramdef>CFTypeRef <parameter>cf</parameter></paramdef>
+</funcprototype></funcsynopsis>
+
+<programlisting>
+<![CDATA[
+CFArrayRef array = CFArrayCreate(kCFAllocatorSystemDefault
+                                   values,
+                                   num,
+                                   &kCFTypeArrayCallBacks);
+
+CFTypeRef object = CFArrayGetValueAtIndex(array, index);
+CFRetain(object);
+
+CFRelease(array); // <-- without the retain, this would
+                  // release object out from underneath us
+
+// use object, and remember to release it
+...
+CFRelease(object);
+]]>
+</programlisting>
+
+<para>Apart from the syntactic differences, you should be familiar with the symantics of the retain-release pattern, be it in Cocoa's Objective-C or Core Foundation's C implementation. In the next few sections we are going to start looking at Foundation classes. Many of these classes are actually implemented in Core Foundation, and we will be using the Core Foundation interfaces to better understand how the Foundation objects perform.</para>
+    </sect2>
+		
+</sect1>
+	
+<sect1>
+    <title>Collections</title>
+
+<para>While the Foundation library provides a wealth of classes, perhaps none are more often used, or have as great an impact on an application's performance, as the containers. As Cocoa programmers we are provided a number of flexible classes that support a wide range of access patterns. If you don't care about the order in which your data is stored, you can use <classname>NSSet</classname>. If you do care about keeping your objects in a particular order, or want to be able to quickly access objects using a numerical index, you can use <classname>NSArray</classname>. Sometimes neither of these containers is appropriate, and you might want to associate your object with a key, such as a string. In this case, you can use <classname>NSDictionary</classname>. Making data structure decisions is not only about programmatic convenience though. Because these containers are used throughout Cocoa applications, understanding how they work, how they perform, and the decisions required to use them effectively can have important performance related implications.</para>
+	
+
+    <sect2>
+	<title>Mutability</title>
+
+<para>One of the first decisions we have to make, no matter what container we choose, is mutablility. By now, you are undoubtedly familiar with Foundation's pattern of providing immutable and mutable versions of its classes. While this distinction often catches beginning Objective-C programmers unaware, and is often viewed as an inconvenience, the mutable/immutable choice has important ramifications toward application design and performance.</para>
+
+<para>If you know you will not be adding or removing objects from an array, you can store your objects in a fixed-size block of memory, and forego the memory and runtime overhead of managing more complex data structures. On the other hand, if you know beforehand that you will be adding or removing objects, choosing the right data structure and access methods can make or break the scalability of an application. The decision regarding mutability is left to the Cocoa programmer when choosing a container class. For the major containers, the foundation framework provides a mutable and immutable version:</para>
+
+<itemizedlist>
+<listitem><para><classname>NSArray</classname>/<classname>NSMutableArray</classname></para></listitem>
+<listitem><para><classname>NSSet</classname>/<classname>NSMutableSet</classname></para></listitem>
+<listitem><para><classname>NSDictionary</classname>/<classname>NSMutableDictionary</classname></para></listitem>
+</itemizedlist>
+
+<para>All is not lost if you find yourself in posession of a container with the wrong mutability for your situation. The container classes provide selectors for creating mutable copies of immutable containters or immutable copies of mutable containers. These are <function>mutableCopy:</function> and <function>copy:</function> respectively. The following code uses these selectors to convert an array of strings:</para>
+
+<programlisting>
+<![CDATA[
+// create and immutable array with two strings
+// NOTE: this array is autoreleased
+NSArray *imArray = [NSArray arrayWithObjects:@"foo", @"bar", nil];
+
+// results in "array count: 2"
+NSLog(@"array count: %d", [imArray count]);
+
+// We need to add a string to the array...
+// NOTE: we are responsible for releasing this array
+NSMutableArray *mArray = [imArray mutableCopy];
+[mArray addObject:@"baz"];
+
+// results in "array count: 3"
+NSLog(@"array count: %d", [mArray count]);
+
+// We are done adding and removing objects, so lets make
+// it immutable again.
+// NOTE: unlike the arrayWithObjects: selector, we are 
+// responsible for releasing this array
+imArray = [mArray copy];
+[mArray release];
+
+NSLog(@"array count: %d", [imArray count]);
+
+...
+
+[imArray release];
+]]>
+</programlisting>
+
+<para>It is important to take note of the reference counting issues in the code. Our first array (<structname>imArray</structname>) is created using <function>arrayWithObjects:</function>, which returns an autoreleased object. This means we are not responsible for releasing it when we are finished. On the other hand, both <function>copy:</function> and <function>mutableCopy:</function> create implicitly retained containers that we must release when we are finished with them. </para>
+
+<para>Your first question might be: why go to the trouble of making a copy of the mutable array, when we can make it an <classname>NSArray</classname> with: <literal><![CDATA[imArray = mArray;]]></literal>? While this will certainly give us the immutable array object we are looking for, our underlying container is still an <classname>NSMutableArray</classname>; we are simply accessing it through its immutable superclass. In fact, the only benefit this would give us is a compiler warning if we tried to alter the array somewhere later in the code. At runtime, sending <structname>imArray</structname> a message such as <function>addObject:</function> would actually go through since the actual object is still an <classname>NSMutableArray</classname>. Don't be confused by Objective-C's static typecasting. It is a contract between your code and the <emphasis>compiler</emphasis>, not with the Objective-C runtime. The runtime will happily continue to send your <quote>immutable</quote> container mutable selectors. As a handy rule of thumb, just imagine that anywhere you see <classname>NSArray</classname> or <classname>NSMutableArray</classname> in the code, instead you saw <classname>id</classname>; because, that is exactly how the Objective-C runtime will see it.</para>
+
+<para>Your second qustion may be why even worry about changing the mutability of our array? We could have just declared the first array as a mutable container and continued on our merry way without all the headaches. In many cases, we don't have a choice. Often we are presented with immutable arrays in library code that we might want to change. For example, sending <function>attributesAtIndex:effectiveRange:</function> to an <classname>NSAttributedString</classname> object returns an immutable <classname>NSDictionary</classname>. There are many places in the Foundation and AppKit frameworks where this is the case.</para>
+
+<para>Even when we do have a choice up front, there are important performance reasons we may want to change the mutability of our containers. Simply put: immutable containers often take up less memory, and you can access their contents more quickly than their mutable counterparts. This speedup will vary widely between container types, and the number of objects each container is holding. Typically, the more objects you put in a container, the better performance differential you will see between the immutable and mutable versions. In some cases, object access can take half as long using an immutable container as a mutable one.</para>
+
+<para>While immutable containers are often faster, they have one obvious drawback: you can't add or remove anything from them! We can get around this, as we did in the previous code example, by making mutable copies of our containers, making the necessary changes, and then making an immutable copy of our revised data structure. But remember: every time you do this, you touch <emphasis>every object in the container</emphasis> twice. In most cases, this will eliminate any benefit from having an immutable container in the first place. Given a container with N objects, you will need to make at least 4N accesses between container modifications to just break even. Additionally, while container access may be spread throughout a program's execution, swapping container mutability to make changes occurs all at once, and with large numbers of objects. This is the kind of performance hit that effects user interface responsiveness, and results in the dreaded beach-ball-of-death. Using immutable containers works well when:</para>
+
+<orderedlist>
+<listitem><para>You rarely need to make any changes to your container. For example, you can initialize your container with all the objects it will need early, and forget about it for the lifetime of your application</para></listitem>
+<listitem><para>You can manage the immutable-mutable-immutable conversion without imacting short-term performance, perhaps in a background thread.</para></listitem>
+<listitem><para>You have a very large number container object requests between any updates.</para></listitem>
+</orderedlist>
+
+<caution><title>AntiPattern</title>
+<para>Because so many of the Foundation and AppKit classes provide methods that return immutable containers, you might find yourself often performing these kinds of mutability copies in your code. These are prime targets for optimization.</para>
+</caution>
+
+    </sect2>
+
+    <sect2>
+	<title>Container Storage</title>
+
+<para>One common area of confusion for new Cocoa programmers is understanding what it is exactly that containers <emphasis>contain</emphasis>. We speak of containers holding objects, when in fact, what they hold is a pointer to objects. When objects are added to a container, they are sent a <function>retain</function> message. When objects are removed from a container, they are sent a <function>release</function> message. By using reference counting, the Foundation containers avoid the overhead of making full object copies every time objects are added or removed. In other words, the Foundation containers work by reference, not by value.</para>
+
+<para>Because the Foundation containers only hold references to their objects, objects can be members of two or more containers at once. This can lead to unintended side-effects if you make changes to that object:</para>
+
+<programlisting>
+<![CDATA[
+NSMutableString *string = [NSMutableString stringWithString:@"foo"];
+NSArray *firstArray = [NSArray arrayWithObject:string];
+
+NSMutableArray *secondArray = [NSMutableArray array];
+[secondArray addObject:[firstArray objectAtIndex:0]];
+
+[[secondArray objectAtIndex:0] setString:@"bar"];
+
+NSLog(string);
+NSLog([firstArray objectAtIndex:0]);
+NSLog([secondArray objectAtIndex:0]);
+]]>
+</programlisting>
+
+<para>In the above code, all of the <function>NSLog</function> routines will output <quote>bar</quote>. OS X 10.2 exposed a new method in <classname>NSArray</classname> to make it easier to perform deep copies:</para>
+
+<programlisting><![CDATA[
+- (id)initWithArray:(NSArray *)array copyItems:(BOOL)flag
+]]>
+</programlisting>
+
+<para>If <varname>flag</varname> is <literal>YES</literal>, Every object in <varname>array</varname> is sent a <function>copyWithZone:</function> message, and this copy is added to the new array instead of the original object. Otherwise, the new array simply retains each of the original objects as it would otherwise.</para>
+
+<programlisting>
+<![CDATA[
+NSMutableString *string = [NSMutableString stringWithString:@"foo"];
+NSArray *firstArray = [NSArray arrayWithObject:string];
+
+NSMutableArray *secondArray = [[NSMutableArray alloc]
+    initWithArray:firstArray copyItems:YES];
+
+[string setString:@"bar"];
+
+NSLog([secondArray objectAtIndex:0]);
+]]>
+</programlisting>
+
+<para>In this code, the string in <varname>secondArray</varname> will still hold the value <literal>foo</literal>.</para>
+
+<para>If you do not want to copy every object when creating a new array, you can always make the copies yourself. Remember, however, that if you use <function>copy</function>, or <function>mutableCopy</function>, you are responsible for releasing the new object even after it has been insterted in the array since the array with send the object its own retain.</para>
+
+<para>This code also exhibits another important aspect of the containers. Even though <structname>firstArray</structname> is immutable, we are still able to change the objects it contains. Do not confuse the immutability of the container--whether you can add or remove objects--with the immutability of the contained objects themselves.</para>
+
+<para>Up to now we have been talking about design issues that relate to the Foundation containers in general. Each container is designed to follow traditional data storage design patterns, and often, the implementation of your code will suggest one container over another. On the surface we are presented with three basic container paradigms: arrays, dictionaries and sets. These simplified interfaces belie the complex implementation underneath.</para>
+
+<para>In the next few sections we will take a closer look at each of the Foundation container choices and how the Core Foundation implementation of these classes effects application performance.</para>
+
+    </sect2>
+		
+    <sect2>
+        <title>NSArray</title>
+
+<para>Perhaps the most often used Foundation container is <classname>NSArray</classname> and its mutable counterpart <classname>NSMutableArray</classname>. This cointainer is pretty easy to understand: it keeps an ordered list of objects that can be accessed by a numerical index. However, there are a number of different ways that this outward interface can be implemented underneath. Depending on what you want to do with the array, different data structures may be more or less appropriate.</para>
+
+<para>If your array is fixed and immutable, a block of memory large enough to hold the object pointers has the advantage of being simple and fast. If you will be adding and removing objects often, and the overall size of the array is changing, a linked list, or deque may be better. As the number of objects in your array increases, the amount of time it takes to access individual elements by index increases as well; so, for extremely large arrays, you might want to go with more complex structure.</para>
+
+<para>Which implementation did Apple pick? All of them! Underneath the visible Foundation classes <classname>NSArray</classname> and <classname>NSMutableArray</classname> are a number of Core Foundation data structures and accompanying methods that provide the actual array class implementation. Core Foundation provides the following underlying structures:</para>
+
+<orderedlist>
+<listitem><para><classname>CFArrayImmutable</classname></para></listitem>
+<listitem><para><classname>CFArrayFixedMutable</classname></para></listitem>
+<listitem><para><classname>CFArrayDequeMutable</classname></para></listitem>
+<listitem><para><classname>CFArrayMutableStore</classname></para></listitem>
+</orderedlist>
+
+<para><classname>CFArrayImmutable</classname> provides the simplest of the implementations for fixed-size immutable arrays. The <classname>CFArrayFixedMutable</classname> type is designed to optimize arrays with fixed capacity, where the membership of the array, unlike an immutable array, may need to change. For smaller arrays, with a few thousand objects, the <classname>CFArrayDequeMutable</classname> type is used. If your array has a great number of objects, Core Foundation will switch to using the <classname>CFArrayMutableStore</classname> type.</para>
+
+<para>You are probably asking yourself: what do I have to do to take advantage of these different classes? It turns out, nothing. The Core Foundation libraries will automatically choose an array implementation based on the mutability and number of objects in your array. If you have an immutable <classname>NSArray</classname>, the decision is pretty easy--you get a <classname>CFArrayImmutable</classname> version. If your array is mutable, you will either get a <classname>CFArrayDequeMutable</classname> or <classname>CFArrayMutableStore</classname> type based on the number of objects in your array. If you have less than 65534 objects, you will be given the deque version, otherwise, you will get a store-based array.</para>
+
+<para>How do you know what kind of an array you have? You can look at the array's description string using the <classname>NSObject</classname> <function>description</function> selector. Each description string includes a <literal>type =</literal> section with one of <literal>immutable</literal>, <literal>fixed-mutable</literal>, <literal>mutable-small</literal> or <literal>mutable-large</literal>, corresponding to <classname>CFArrayImmutable</classname>, <classname>CFArrayFixedMutable</classname>, <classname>CFArrayDequeMutable</classname> or <classname>CFArrayMutableStore</classname> respectively. There is another decidedly non-Apple-approved method for determining what kind of array implementation you are holding. the CFArray implementation keeps the type of array in the first two bits of the <structname>CFRuntimeBase</structname> structure's <varname>_info</varname> field.</para>
+
+<programlisting>
+<![CDATA[
+typedef struct __CFRuntimeBase_HACK {
+    void *_isa;
+    uint16_t _rc;
+    uint16_t _info;
+} CFRuntimeBase_HACK;
+
+
+NSMutableString *string = [NSMutableString stringWithString:@"foo"];
+NSArray *array = [NSArray arrayWithObject:string];
+
+NSLog(@"%d", ((CFRuntimeBase_HACK*)array)->_info & 0x3);
+]]>
+</programlisting>
+
+<para>The <structname>CFRuntimeBase_HACK</structname> definition is included as a convenience, since the <structname>CFRuntimeBase</structname> structure is not normally available in the typical header includes. The first two bits of the <varname>_info</varname> field are defined for <classname>CFArray</classname> as:</para>
+
+<programlisting>
+<![CDATA[
+enum {		/* Bits 0-1 */
+    __kCFArrayImmutable = 0,
+    __kCFArrayFixedMutable = 1,
+    __kCFArrayMutableDeque = 2,
+    __kCFArrayMutableStore = 3
+};
+]]>
+</programlisting>
+
+<para>Using this information, you can easily determine at runtime what kind of array Core Foundation has given you<footnote><para>The <structname>CFRuntimeBase</structname> structure is considered a moving target, and is not guaranteed to be binary compatible between operating system releases. If you are foolhearty enough to actually <emphasis>depend</emphasis> on any of this information, expect things to break at some point in the future. You should use this trick when trying to learn about the behavior of your code and data strucutres, but not in shipping code.</para></footnote>. In fact, as you add and remove objects from your array, the array type will automatically change. The Core Foundation library has set the maximum number of objects for the deque implementation (called <varname>__CF_MAX_BUCKETS_PER_DEQUE</varname>) at 65534. If you have an array with 65534 objects, and add one more, the array type will be switched from a deque implementation to a store implementation. If the number of objects in your array ever drops below half this number, the array will be switched back to a deque implementation. This change in implementation is not trivial. Because this implementation change occurs automatically, it can negatively impact the performance of your application if it occurs at an inopportune time. This is why the implementation waits until the number of objects in the array has dropped below half <varname>__CF_MAX_BUCKETS_PER_DEQUE</varname> before it changes types. Otherwise, the array implementation might run the risk of excessive thrashing if your code caused the array count to move across this boundary too often.</para>
+
+<para>Presently, Foundation's Objective-C <classname>NSArray</classname> implementation does not appear to provide any <classname>CFArrayFixedMutable</classname> array implementations using the existing factories or initializers. If you know beforehand that you are going to have a maximum number of objects in your array, but still need to add or remove objects, <classname>CFArrayFixedMutable</classname> provides a faster data structure than either of the two other mutable array implementations. To get a fixed-mutable array, you can make the following Core Foundation call to create a copy of an existing array:</para>
+
+<programlisting>
+<![CDATA[                                       
+NSArray *imArray = [NSArray arrayWithObjects:...];
+
+NSMutableArray *fixedArray = 
+    (NSMutableArray*)CFArrayCreateMutableCopy(NULL, 
+                                              [mArray count],
+                                              (CFArrayRef)mArray);
+
+// we can change objects in the fixed array
+// unlike an immutable array.
+[fixedArray replaceObjectAtIndex:index withObject:anObject];
+]]>
+</programlisting>
+
+<para>Or create an array from scratch as we showed earlier:</para>
+
+<programlisting>
+<![CDATA[
+CFArrayRef array = CFArrayCreate(kCFAllocatorSystemDefault
+                                 values,
+                                 num,
+                                 &kCFTypeArrayCallBacks);
+]]>
+</programlisting>
+
+<para>The function prototypes for the creation and copy functions are:</para>
+
+<funcsynopsis><funcprototype>
+<funcdef>CFArrayRef <function>CFArrayCreateCopy</function></funcdef>
+<paramdef>CFAllocatorRef <parameter>allocator</parameter></paramdef>
+<paramdef>CFArrayRef <parameter>theArray</parameter></paramdef>
+</funcprototype></funcsynopsis>
+
+<funcsynopsis><funcprototype>
+<funcdef>CFArrayRef <function>CFArrayCreate</function></funcdef>
+<paramdef>CFAllocatorRef <parameter>allocator</parameter></paramdef>
+<paramdef>void** <parameter>values</parameter></paramdef>
+<paramdef>CFIndex <parameter>numValues</parameter></paramdef>
+<paramdef>const <parameter>CFArrayCallBacks *callBacks</parameter></paramdef>
+</funcprototype>
+</funcsynopsis>
+
+<para>As well as their mutable counterparts:</para>
+
+<funcsynopsis><funcprototype>
+<funcdef>CFArrayRef <function>CFArrayCreateMutableCopy</function></funcdef>
+<paramdef>CFAllocatorRef <parameter>allocator</parameter></paramdef>
+<paramdef>CFArrayRef <parameter>theArray</parameter></paramdef>
+</funcprototype>
+</funcsynopsis>
+
+<funcsynopsis><funcprototype>
+<funcdef>CFArrayRef <function>CFArrayCreateMutable</function></funcdef>
+<paramdef>CFAllocatorRef <parameter>allocator</parameter></paramdef>
+<paramdef>CFIndex <parameter>capacity</parameter></paramdef>
+<paramdef>CFIndex <parameter>numValues</parameter></paramdef>
+<paramdef>const CFArrayCallBacks <parameter>*callBacks</parameter></paramdef>
+</funcprototype>
+</funcsynopsis>
+
+<para>Each array implementation introduces a trade-off between different array functions such as access, searching, insertion and deletion. By its very nature, a general purpose array cannot know beforehand which of these operations a program is going to emphasize. For general purpose data structures such as <classname>NSArray</classname>, it is important to provide a well balanced implementation that performs the basic operations with bounded, worst-case performance measures, and must do this whether it is holding 100 or 1,000,000 object references. Apple gives the following performance recommendations in their documentation:</para>
+
+<blockquote><para>The access time for a value in the array is guaranteed to be at worst O(log N) for any implementation, current and future, but will often be O(1) (that is, constant time). Linear search operations similarly have a worst-case complexity of O(N*log N) , though typically the bounds will be tighter. Insertion or deletion operations are typically linear in the number of objects in the array, but may be O(N*log N) clearly in the worst case in some implementations. There are no favored positions within the array for performance; for example, it is not necessarily faster to access values with low indexes or to insert or delete values with high indices. </para></blockquote>
+
+<para>The performance metrics in the above statement are necessarily required to cover all <classname>NSArray</classname> implementations. Knowing that we are instead dealing with several different implementations, we can get a clearer idea of how best to use this class. Critical to the implementation of <classname>NSArray</classname> are a couple of additional data structures: the deque and balanced tree.</para>
+
+        <sect3>
+            <title>Deque</title>
+	
+	<para>When holding fewer than <varname>__CF_MAX_BUCKETS_PER_DEQUE</varname> (currently set at 65434) <classname>CFArray</classname> is implemented as a deque, or <emphasis>double ended queue</emphasis>. The noticable difference between a deque and normal array implementation is that a deque is organized so that there is free space to either side of the used memory blocks (See <xref linkend="deque"/>.</para> 
+
+<figure id="deque"> 
+	<title><classname>CFArray</classname>'s Deque Structure</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="chapters/foundation/figures/deque.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>As items are added or removed from the array, the deque will re-center itself in its allocated block of memory. This design allows for constant-time insertion and removal of objects from either end of the array, which is why it is called a double ended queue. While not as efficient as when opperating on the ends, there is an additional benefit when inserting or removing objects from the interior of the array. <xref linkend="deque_insert_delete"/> depics the process of inserting (A) and deleting (B) a block of objects into and out of a deque.<footnote><para>Technically, you might argue the data structure is no longer operating strictly as a deque since we are not restrictuing access to the ends of the array.</para></footnote></para>
+
+<figure id="deque_insert_delete"> 
+	<title>Insertion (A) and Deletion (B) <classname>CFArray</classname>'s Deque Data Structure</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="chapters/foundation/figures/deque_insert_delete.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The deque keeps track of several areas in the array: L, the left hand empty space; A, the portion of the array to the left of the insertion or deletion index; B, the block of objects to be inserted or removed; C, the portion of the array to the right of the the insertion or deletion; and R, the right hand empty memory area. The deque will take the smaller of A and C, and move it into the contiguous empty memory. In <xref linkend="deque_insert_delete"/>, C is the smaller portion of the array divided by the insertion, so it is moved to its right. The new elements can then be inserted in the now vacant slots. As long as there is enough room on either end of the array's allocated memory block, at most only half the array must be copied to make room for an insertion , and often it will be much less. Contrast this with a typical array insertion, where making changes to the beginning of the array are penalized over changes to the end of the array. Deletion works similarly to insertion in that the smaller portion of the array is moved to fill in the area of the array vacated by the deletion. Deletion has the added benefit over insertion in that there is no risk in needing extra memory to complete the procedure. </para>
+
+<para>TODO: go over the big-O notation for insertion, deletion and retrieval. Just as with traditional arrays, for retreival the fixed array storage allows direct indexing into the memory location with constant time O(1).</para>
+
+        </sect3>
+
+        <sect3>
+	<title>Balanced Trees AKA <classname>CFStorage</classname></title>
+	
+<para>As useful as the array deque implementation is, as more and more objects are added, the time needed to insert and delete objects keeps growing. When the number of objects exceeds <varname>__CF_MAX_BUCKETS_PER_DEQUE</varname>, <classname>CFArray</classname> stops storing its objects in a deque, and starts using a tree data structure. This tree implementation is encapsulated in the Core Foundation class <classname>CFStorage</classname>.</para>
+
+<para><classname>CFStorage</classname> is an implementation of a <emphasis>balanced tree</emphasis>, more specifically, a 2-3 Tree<footnote><para>a precursor to the more general B-Tree, or 2-3-4 Tree</para></footnote>. A 2-3 Tree has the following requirements:</para>
+
+<orderedlist>
+<listitem><para>Nodes are either leaf nodes, which have no children, or internal nodes, which have no data.</para></listitem>
+<listitem><para>Internal nodes have either two or three children.</para></listitem>
+<listitem><para>All leaf nodes are at the same height in the tree.</para></listitem>
+</orderedlist>
+
+<para><xref linkend="tttree"/> shows an example of a small 2-3 Tree.</para>
+
+<figure id="tttree"> 
+	<title>A 2-3 Tree</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="chapters/foundation/figures/tttree.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Unlike an array that can be indexed directly, we must traverse a tree to retrieve any object value in the array. To facilitate this search, each node in the tree keeps track of the total size of all its children. While searching, these sizes are used to establish the bounds of the array elements that are contained in each subtree. For example, imagine we want to get the value of the array at location 15, which is stored in the second leaf node in <xref linkend="tttree"/>. Starting at the root node, we look at the size of each of its children from left to right. Since the first child of the root node has a size of 20, we know that the left subtree must contain our value, and there is no need to search the right-hand subtree. Moving down the left-hand tree to the first child node we repeat the process. Examining that node's first child, we see it has a size of ten, which is too small to contain our value. This information also tells us that the array objects in the next child node start at 10. Examining that node, we find that is has a size of ten as well, which means it contains the array entries 10 (the lower bound we already established) through 19, and our target index 15, so our search is done.</para>
+
+<para>The time it takes to traverse a tree is proportional to its height. <classname>CFStorage</classname> leaf nodes are comparatively large, with each leaf holding a maximum of 65536 bytes. In our case, all array values are pointers, so each entry in the array takes 4 bytes (<programlisting><![CDATA[sizeof(void*)]]></programlisting>), which means each leaf node can hold 16384 pointers. The large size of the leaf nodes dictates that any <classname>CFStorage</classname> tree will be much broader than it is deep. By keeping the height of the tree relatively short, the <classname>CFStorage</classname> tree implementation keeps down the time it takes to retrieve an object from any particular array location.</para>
+
+<sidebar>
+    <title>The Importance of Being Balanced</title>
+<para>There has been a lot of talk up to this point about balanced trees. Why is it important that a tree be balanced? <xref linkend="balanced_tree"/> shows a depiction of an unbalanced tree, as well as a balanced tree. A balanced tree is one where no one path through the tree is longer than any other.</para>
+
+<para>What does this mean for performance? We know that tree traversal time is directly related to the height of a tree (h). In the case of tree A in <xref linkend="balanced_tree"/>, node 1 is at a depth of 3, while node 1 is at a depth of 1. Accessing these two nodes will take much different times. Now consider tree B, where all the leaf nodes are at a consistent depth of 2. Accessing any single node is the same as accessing any other.</para>
+</sidebar>
+
+<figure id="balanced_tree"> 
+	<title>Unbalanced (A) and Balanced (B) Trees</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" fileref="chapters/foundation/figures/balanced_tree.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>When dealing with extremely large arrays, there is a good chance that not all of your array will be able to fit within available physical memory. When this happens, portions of your tree are likely to be swapped to disk. The large leaf node size is an important design consideration in this situation. The seek time of a disk, or the time it takes to find a specific piece of data, is much slower than reading sequential bytes once the disk has found a block of data. The virtual memory subsystem will be swapping in and out entire pages anyway, so it is faster to organize your data structure around these physical constraints<footnote><para>The concepts present in the 2-3 Tree data structure, which was developed in the 70's, were later generalized to B-Trees. B-Trees are widely used in database and filesystem applications today, where terabytes of information are stored on secondary media, and require high performance search, insertion and deletion.</para></footnote>. We will take a much more in depth look at these ideas in Chapter <!--insert xref-->, Disk.</para>
+
+<para><classname>CFStorage</classname>'s large leaf-node size allows another important optimization. <classname>CFStorage</classname> caches the most recently used leaf node, and checks retrievals against this cached node before traversing the tree. Any subsequent array retrievals from array locations contained in that leaf node occur in constant time (O(1)) as opposed to a tree's typical logarithmic time (O(ln n)). The larger the leaf node, the better chance that subsequent array requests will come from that node. The balanced tree is an extremely good example of the <emphasis>Locality</emphasis> pattern at work. </para>
+
+<para>We have shown at this point how <classname>CFStorage</classname> is able to ameliorate some of the object retrieval penalties incurred by our use of a tree structure. Where a tree retakes the advantage over a traditional array implementation is in insertion and deletion operations. By breaking an array down into smaller, linked components, a tree reduces the memory management penalties associated with shifting bytes to either make room for inserted elements, or close gaps from the elements that have been deleted. A balanced tree is able to do this while maintaining a consistent depth for all of the leaf nodes.</para>
+
+<para><xref linkend="tttree_insertion"/> shows the steps a 2-3 Tree goes through to insert five new elements into a tree at array index 15. The top tree shows a root node with three children. All of the children are full leaf nodes (For this example we are limiting leaf nodes to 10 objects). Because the second leaf, where we want to insert our new objects, is full, the tree needs to make room. It starts by creating a new empty node, and copying the overflow elements from the second leaf. Next, the tree creates a new internal node (B), and assigns the newly created leaf node to B's first child pointer. In order to keep the array indexing in order, the tree must then shift A's third child to B's second position. Finally, the tree creates a new root node (C), and reassigns the old root node, and the newly created internal node, to the first and second children's locations. In the end, we have enough room to insert our new elements, and each leaf node is still the same distance down in the tree as any other.</para>
+
+<figure id="tttree_insertion"> 
+	<title>Inserting new Objects Into a 2-3 Tree</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="chapters/foundation/figures/tttree_insertion.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>In this example, we have depicted a worst-case insertion scenario, where all of the leaf nodes are completely full, and there are no empty child pointers in the internal nodes. Often, a tree will have internal nodes that only have two children, or leaf nodes will not be completely full. Consider an insertion at location 20 in the final tree from <xref linkend="tttree_insertion"/>. Because node A has a free child pointer, the tree can create a new leaf node to hold the new elements and assign it to this last child location (See <xref linkend="tttree_insertion2"/>). In this case, there is no rebalancing necessary, and no need to create new internal nodes. Similarly, if we need to insert new elements in one of the half-full leaves, as long as our new elements didn't overflow the leaf node's capacity, we can insert safely without and tree reorganization.</para>
+
+<figure id="tttree_insertion2"> 
+	<title>Another Insertion Example</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="chapters/foundation/figures/tttree_insertion2.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>TODO: work on big-O notation for this part. We know that insertions and deletions in a traditional array are O(N). That is, the time it takes to insert or delete an element in an array grows linearly with the number of objects in the array. Traversing a tree structure is at worst</para>
+        </sect3>
+        
+        <sect3>
+            <title>Using <classname>NSArray</classname></title>
+<para>TODO: get numbers for ins/del. Lets review what we know now about the different array implementations.</para>
+
+<table id="array_imps">
+	<title>Comparing Array Implementations</title>
+<tgroup cols="3">
+	<thead>
+		<row>
+                    <entry>Array Type</entry>
+                    <entry>Retrieval</entry>
+                    <entry>Insersion/Deletion</entry>
+                </row>
+	</thead>
+	<tbody>
+		<row>
+                    <entry><classname>CFArrayImmutable</classname></entry>
+                    <entry>O(1)</entry>
+                    <entry>N/A</entry>
+                </row>
+		<row>
+                    <entry><classname>CFArrayFixedMutable </classname></entry>
+                    <entry>O(1)</entry>
+                    <entry>O(n)</entry>
+                </row>
+		<row>
+                    <entry><classname>CFArrayDequeMutable </classname></entry>
+                    <entry>O(1)</entry>
+                    <entry>O(n/2)</entry>
+                </row>
+		<row>
+                    <entry><classname>CFArrayMutableStore </classname></entry>
+                    <entry>O(h)</entry>
+                    <entry>O(n log n)</entry>
+                </row>
+	</tbody>
+</tgroup>
+</table>
+
+        </sect3>
+
+    </sect2>
+
+    <sect2>
+    <title>NSDictionary</title>
+
+<para>NSDictionary. hash codes are important. Should you provide your own hash codes for keys? From the docs:The access time for a value in a CFDictionary object is guaranteed to be at worst O(log N) for any implementation, but is often O(1) (constant time). Insertion or deletion operations are typically in constant time as well, but are O(N*log N) in the worst cases. It is faster to access values through a key than accessing them directly. Dictionaries tend to use significantly more memory than an array with the same number of values. 
+</para>
+
+    </sect2>
+
+    <sect2>
+	<title>NSSet</title>
+
+<para>NSSet CFSet CFBag) explain differences (can an NSSet be a bag?) no performance information. and NSCountedSet it is faster to access a set than it is an array, so it is better to use a set when you do not care about the order of the objects.</para>
+
+<para>idea - use an enumerator example on a set and  n array to show thedifference.</para>
+
+    </sect2>
+
+    <sect2>
+	<title>Enumerators</title>
+        
+<para>Many libraries now use the concept of an enumerator (or iterator in C++-speak). An enumerator abstracts the underlying access methodology, be it numerical indexing, key-value organization, or just random luck, and provides a programmer with an abstract method of stepping through a data structure's objects. The Foundation framework provides its own enumerator class in <classname>NSEnumerator</classname>. Consider the use of an enumerator versus noraml indexing of an array:</para>
+
+<programlisting>
+<![CDATA[
+NSArray *anArray = ...;
+id object;
+
+// access anArray using an index
+int i;
+int count = [anArray count];
+for(i = 0; i count; i++) {
+    object = [anArray objectAtIndex:i];
+    // do something
+    ...
+}
+
+// access anArray using an enumerator
+NSEnumerator *e = [anArray objectEnumerator];
+while(object = [e nextObject]) {
+    // do something
+    ...
+}
+]]>
+</programlisting>
+
+<para>As you can see, there are certain common programming actions that tend to be more easily represented in code with enumerators than with a container's native access scheme. For dictionaries, you can either get an enumerator that holds the keys to the database, or the objects themselves:</para>
+
+<programlisting>
+<![CDATA[
+NSDictionary *aDictionary = ...;
+id object;
+
+// access aDictionary's objects directly
+NSEnumerator *e = [aDictionary objectEnumerator];
+while(object = [e nextObject]) {
+    // do something
+    ...
+}
+
+// access the objects through the keys
+NSEnumerator *e = [aDictionary keyEnumerator];
+while(object = [aDictionary objectForKey:[e nextObject]]) {
+    // do something
+    ...
+}
+]]>
+</programlisting>
+
+
+<para> The real question is: how do they fare performance-wise compared to just using an index?</para>
+
+
+<para>TODO: compare indexing and NSEnumerator performance</para>
+
+    </sect2>
+
+</sect1>
+    
+<sect1>
+    <title>Class Clusters</title>
+
+<para>TODO</para>
+</sect1>
+
+	
+
+<sect1 id="FOUN:resources">
+	<title>Resources</title>
+	<para>todo</para>
+	
+<variablelist>
+	<title>Resources</title>
+	
+	<varlistentry><term><application>F-Script</application></term>
+	<listitem><para>
+	<ulink url="http://www.fscript.org/"/>
+	</para></listitem>
+	</varlistentry>
+</variablelist>	
+</sect1>
+	
+</chapter>

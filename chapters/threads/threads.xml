@@ -1,0 +1,175 @@
+<chapter>
+	<title>Working With Threads</title>
+<sect1>
+	<title>Why Multithreaded?</title>
+	<para>todo:</para>
+</sect1>
+
+<sect1>
+	<title>Timers</title>
+
+<para>Use NSTimers instead of threads:
+
+From Kirk Kerekes==========================================
+"Somewhere in Hillegass's CocoaProgrammingforMacOSX, Aaron makes the comment that most uses of NSThread can be better handled with creative use of NSTimer.
+
+Sage advice indeed. I wish I had listened more carefully.
+
+If the inability to actually release an NSTimer bugs you (as I know it bugs me), consider going a step lower to NSObject's
+
+- (void)performSelector:(SEL)aSelector withObject:(id)anArgument afterDelay:
+(NSTimeInterval)delay
+
+and
+
+- (void)performSelector:(SEL)aSelector withObject:(id)anArgument afterDelay:
+(NSTimeInterval)delay inModes:(NSArray *)modes
+
+-- which I infer contain NSTimer's core functionality.
+
+I ripped a bunch of crash-prone threads out of my current app and replaced them with NSTimer and performSelector techniques, and the perceived speed of the app increased dramatically. Add some judicious use of NSNotifications to handle document closing and application quitting, and the solution was complete.
+
+It never crashes inexplicably, and I don't have to worry about "thread safe"
+ considerations.
+=======================================================</para>
+
+<para> from ondra:
+> Are sequential performSelector:withObject:afterDelay: scheduled performs
+> guaranteed to be performed in the same order?  The documentation doesn't say
+> one way or the other.
+
+Therefore they are not.
+
+I believe they actually do work that way currently (mainly since they, so far as I know, are stored with an absolute time computed as "now+delay", and of course "now" for subsequent messages differ), but you can't depend on this behaviour.
+</para>
+
+<para>
+> What is the 'proper' way to shutdown down a thread?
+
+[NSThread exit] from within the thread you want shut down takes care of all the issues you mention.
+</para>
+
+<para>
+> Option 1:  Every user action that requires talking to the server spawns a new > thread, which attempts to communicate to the server, but is locked until the 
+> server socket is free.  This has the benefits of being easy to code:  Expect 
+> that I got my data back from my socket request, and update the UI on a 
+> successful response.  This has the downside that I will be creating many 
+> threads, though I'd be surprised if any user could get more than two or three 
+> threads going at a time (most server request / responses have little data 
+> associated).
+
+
+> Option 2:  Set up a communication thread when the program starts up, and set 
+> up a queue to handle server requests.  This has the benefit that only one 
+> extra thread will be around.  It has the downside that it makes it much more 
+> difficult  to know what response I'm receiving, and makes it more difficult to 
+> keep the UI in sync with the server state.
+
+You can also create a thread pool which is a mix of option 1 &amp; 2 and bound how big this thread pool gets. It also avoids having to create threads again and again.
+
+</para>
+
+</sect1>
+
+<sect1>
+	<title>Spinning Off Threads</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Data Contention</title>
+	<para>todo</para>
+	
+	<para>
+	<ulink url="http://developer.apple.com/technotes/tn2002/tn2059.html"/>
+	Using the Cocoa collection classes in mt apps.
+	</para>
+	
+	<para>
+	I read that the "[[object retain] autorelease]" cycle was used for multi-threading safety.
+Is this a guaranteed behavior of NSEnumerator?
+...
+
+On Tuesday, September 17, 2002, at 12:05 PM, John C. Randolph wrote:
+
+Okay, I just checked.  NSEnumerator does retain and autorelease any object it returns from -nextObject.
+
+-jcr
+
+Fabien
+</para>
+
+<programlisting>
+<![CDATA[
+Read the artcle:
+
+I did. The part that makes it thread safe is having the retain in the lock, not the autorelease. You really want to spend as little time as possible inside locks.
+
+      //    Get the dictionary's value, and then try to message the value.
+        [aDictionaryLock lock];
+        anObject = [aDictionary objectForKey: KEY];
+        [[anObject retain] autorelease];
+        [aDictionaryLock unlock];
+
+        [anObject description];
+
+While that prevents the crash, this works also, without cluttering the pool:
+
+      //    Get the dictionary's value, and then try to message the value.
+        [aDictionaryLock lock];
+        anObject = [[aDictionary objectForKey: KEY] retain];
+        [aDictionaryLock unlock];
+
+        [anObject description];
+        [anObject release];
+
+Along with the same in doSets():
+
+        [aDictionaryLock lock];
+        [aDictionary setObject: anObject  forKey: KEY];
+        [aDictionaryLock unlock];
+
+        [anObject description];
+        [anObject release];
+
+The important thing is that you retain when inside the lock and release when you're done. While the style in the article recommending that retain/autorelease may be good for those who forget that they have an extra retain count, I think it complicates the code. I hate to see gratuitous use of autorelease when it isn't necessary, since it bloats the pool and slows down your app. Keeping your allocations and releases balanced, locking access to shared objects, and not depending on the retain counts in collections results in more maintainable, efficient code.
+
+matt.
+]]>
+</programlisting>
+	<para>
+	<ulink url="http://www.mulle-kybernetik.com/artikel/Optimization/opti-4-atomic.html"/>
+great example of using a little assembler to speed up locks around incrementing and decrementing, instead of using NSLock.
+	</para>
+	
+	<para>Basically,  I have the producer / consumer problem.  Thread number 2 needs the data and is writing it out to disk.  Conceivably, this disk write could take seconds.   I cannot have thread number one blocked for seconds, or it will loose data.</para>
+
+</sect1>
+
+<sect1>
+	<title>Communicating with Distributed Objects</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Multithreading and AppKit</title>
+	<para>todo</para>
+	
+	<para>
+Found this rather vague piece of info in the Jaguar release notes. Does
+this mean we no longer have to use DO for threads to use the AppKit?
+
+You don't have to anyways, because there's now a new NSObject method called -performSelectorOnMainThread:withObject:waitUntilDone: (see Foundation Release Notes).
+
+http://developer.apple.com/technotes/tn2002/tn2053.html
+
+Threading Support (AppKit)
+
+Threading support in AppKit.
+
+  NSWindows can now be created in threads other than the main thread.
+(r. 2887016).
+</para>
+</sect1>
+
+</chapter>

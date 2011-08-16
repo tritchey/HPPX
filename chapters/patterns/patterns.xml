@@ -1,0 +1,55 @@
+<chapter>
+	<title>Algorithms and Design Patterns</title>
+
+<sect1>
+	<title>Basic Principles</title>
+	<para>todo</para>
+
+	<sect2>
+		<title>Introduction to Algorithms</title>
+		<para>todo</para>
+	</sect2>
+	
+	<sect2>
+		<title>Algorithms Versus Design Patterns</title>
+		<para>todo</para>
+	</sect2>
+	
+	
+	
+</sect1>
+
+<sect1>
+	<title>Algorithms</title>
+<para>todo</para>	
+</sect1>
+
+<sect1>
+	<title>Patterns</title>
+		<para>todo</para>
+
+	<sect2>
+		<title>Class Clusters</title>
+
+<para>show how to use class clusters as a design pattern for overcoming the overloading 
+limitation.</para>
+
+	</sect2>
+
+	<sect2>
+		<title>Surrogate Objects</title>
+
+<para>show how to use the \cmdline{forwardInvocation:} as a proxy for real objects. This can be 
+used when you want to implement lazy optimization, and have a stand-in until the real items 
+of interest are loaded from the system. (see p151 in the Objective-C manual).</para>
+
+	</sect2>
+
+</sect1>
+
+<sect1>
+	<title>Anti-patterns</title>
+		<para>todo</para>
+</sect1>
+
+</chapter>

@@ -1,0 +1,1174 @@
+<?xml version="1.0" encoding='ISO-8859-1'?>
+<!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+                      "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd" [
+<!ENTITY % hppxents SYSTEM "../../HPPX.ent">
+%hppxents;
+]>
+<chapter id="OBJC"> 
+    <title>Under the Hood with Objective-C</title>
+
+
+<para>Just like knowing where the gas and brake pedal are located doesn't automatically make you a formula-one driver, knowing how to program in any particular language doesn't necessarily give you the wherewithal to create high performance programs. Sometimes you have to get under the hood to get a good idea of what it takes to go fast.</para>
+
+<para>Superficially, Objective-C is a very easy language to learn and use. Of course, nothing comes for free. The simplicity of programming for &osx; using Objective-C masks the various elements that must come together to make it all work.</para>
+
+<para>
+	<informalfigure id="language_elements"> 
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="chapters/objc/figures/language_elements.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</informalfigure>
+</para>
+
+<para>In the above diagram, the component we are most cognizant of is the language itself&mdash;it is what confronts us continuously in our editor windows. Hopefully you are already familiar with the Objective-C language. If you have come to this book from a non-Objective-C background, <xref linkend="UHOC:resources"/>, at the end of the chapter provides several good sources for learning Objective-C. Languages, no matter how good, do not stand on their own. Depending upon its complexity, certain features of a language may require a runtime system, as is the case with Objective-C. Many of Objective-C's features that make it stand out from other languages are made possible by its runtime.</para>
+
+<para>Just as critical as a language's syntax and semantics are the available libraries. Ultimately, libraries are how real work gets done in any language. Otherwise, programmers would have to create their own code for interacting with system resources such as networks, storage, input devices and displays. With Objective-C and &osx; we have a plethora of choices when it comes to using libraries. This variety comes from Objective-C's ability to seamlessly use C, Objective-C, and even C++ (See <xref linkend="UHOC:ocpp"/>). This variety of language options means that Objective-C programmers can interact with &osx; at many different levels. <xref linkend="osxlevels"/> shows some of the many faces of &osx; available to Objective-C programmers.</para>
+
+<figure id="osxlevels"> 
+	<title>Interacting With &osx;</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="chapters/objc/figures/osxlevels.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Of course, the OS is the environment within which all of this is possible. You have undoubtedly been forced to use, at one time or another, operating systems that were less than robust<footnote><para>I don't think there is any cause for naming names&mdash;we all know which OSs I am talking about (and they were not <emphasis>all</emphasis> from Redmond, either.</para></footnote>&mdash;that perhaps felt more like an unsteady deck of cards, than a fine tuned piece of software. Thankfully, most operating systems these days do not fall into this category. Understanding how these modern operating systems work is important to understanding how your applications will perform when running on top of them.</para>
+
+<para>In the next few chapters, we will descend through these different layers of programming in Objective-C on &osx;, focusing on the implementation details that will give you an intimate understanding of what is going on under the hood. This chapter focuses on the underlying mechanisms of the Objective-C language and runtime. <olink targetptr="FOUNDATION" targetdoc="foundation.xml"/>, covers the use of system and third-party libraries, as well as issues involved in creating your own. <olink targetptr="OSX" targetdoc="osx.xml"/> will take a more detailed look at the &osx; operating system, including both its benefits and quirks.</para>
+
+<sect1>
+    <title>Objective-C's Family Tree</title>
+
+<para>Every Thanksgiving my family would take a 500 mile trip south to my grandparents in Tennessee. When we finally stumbled out of the car, dazed and sickened from exhaust fumes, roller-coaster hills and eight hours of eight-track music, everything always seemed just a little weird. Of course, being from Illinois, we were considered the "Yanks." Everyone spoke with an unintelligible accent, and there were always a few strange, toothless old men sitting around on the porch, drinking iced tea from mason jars, spitting tobacco, and otherwise having a high old time.</para>
+
+<para>Coming from C++, this about describes the feeling I had upon looking at Objective-C code for the first time. It was disconcerting at first, but very quickly you come to realize you are among family. Of particular consternation was the use of brackets to perform, what I thought at the time were, C++'s version of object method calls:</para>
+
+<programlisting>
+NSMutableArray *cutList = [[NSMutableArray alloc] init];
+</programlisting>
+
+<para><emphasis>Why go to all the trouble?</emphasis> I thought to myself. It wasn't until I came to understand the difference in the object systems for C++ and Objective-C that the syntax began to make sense.</para>
+
+<para>Both Objective-C and C++ were originally conceived as object oriented extensions to C. C++ was written by Bjarne Stroustrup and comes from the Simula 67 school, which places more import on compile-time type safety over run-time dynamism. The syntax of C++ sticks closer to that of C proper, and is built to make user-defined classes act as much as possible like the built-in types of C. Features like operator overloading allow programmers to write classes that intuitively feel like their keyword counterparts. For numerical programming, this allows for great elegance. One need only look at the plethora of matrix classes that allow operations such as:</para>
+
+<programlisting> A += B * C; </programlisting>
+
+<para>to see why C++ has so many proponents. In addition, Generic Programming and the Standard Template Library (STL) in particular, have pushed forward the idea of what can be encapsulated in code. Libraries such as Andrei Alexandrescu's pattern templates, which provide the ability to concretely specify and implement design patterns, and the Graph Boost Library, which provides generic graph storage and algorithm templates, are excellent examples of the power of generic programming. Without a doubt, for hard core number crunchers, C++ has some great advantages.</para>
+
+<para>Objective-C was written by Brad Cox in order to add smalltalk-80 extensions to C, and had not experienced widespread acceptance in either the operating system or application developer community. The one place Objective-C <emphasis>was</emphasis> picked up happened to be Steve Jobs post-Apple computer company NeXT. When Apple purchased NeXT in order to acquire what would later become &osx;, it also inherited Objective-C.</para>
+
+<para>Objective-C is fundamentally a dynamic language. That is, almost all decisions regarding object type and method calls are made at run-time, as opposed to compile-time. Many aspects of Objective-C and Cocoa that make OS X such a pleasant platform to program are derived from this dynamism. Tools such as <application>Interface Builder</application> and 
+technologies like Distributed Objects get much of their power from the ability to handle completely new objects without undue overhead. While techniques exist in many forms on different platforms (such as .NET or CORBA), Objective-C
+has a twofold advantage: First, Objective-C is still C, retaining the
+lower-level speed and efficiency traditionally associated with the
+language. Second, Objective-C's object-oriented extensions are
+simple--the set of syntactic changes are small compared to the power
+they offer a programmer.</para>
+
+<para>Unlike C++, which seems like it is trying to hide its object-oriented nature behind traditional C syntax, Objective-C's terminology and syntax are meant to emphasis the difference between objects and C's traditional procedural paradigm. Seeing <programlisting>[cutList addObject:newPiece]</programlisting> immediately shouts to us that <classname>cutList</classname> is an object <footnote><para>This is one nit pick I have with Cocoa's naming scheme for traditional C structures. You can't know intuitively that <classname>NSWindow</classname> is a class, but <structname>NSRect</structname> is not. It is easy enough to teach yourself the difference, but creates undue difficulty for beginners.</para></footnote>. When you see the brackets, you know you are doing something radically different from typical C code. In this case, you are interacting with a dynamic run-time system to pass messages between objects.</para>
+
+</sect1>
+
+<sect1>
+		<title>Why Objective-C?</title>
+
+<para>If C++ has so many advantages, why would we choose to ever use Objective-C? To start, for an object oriented language, Objective-C is small. Apart from getting used to Objective-C's unusual bracket syntax, most programmers familiar with C and another object-oriented language can pick up Objective-C very quickly. For those programmers new to object-oriented programming altogether, which is becoming an ever smaller group, Objective-C is a very good language with which to learn OOP principles.</para>
+
+<para>At the same time that Objective-C is quick to learn, combined with Cocoa, it allows developers to create complex graphical applications more quickly. Personally, I find myself completing applications or tools that I would have <emphasis>never</emphasis> considered tackling by myself on Windows or Linux. By using a simpler language, you will find yourself spending less time fixing typos and double checking syntax peculiarities, and more time getting your projects done.</para>
+
+<para>In fact, this should be the first rule of high performance programming:</para>
+
+<blockquote>
+<para>The program that is written, <emphasis>no matter how slow</emphasis>, will always finish faster than the program that is never completed.</para> </blockquote>
+
+<para>Many hours of programmer productivity have been lost to premature optimization&mdash;which you will hear about time and time again in any discussion about high performance programming. Unfortunately, It is every programmer's right to learn this lesson the hard way. One of the first optimization decisions we make is choosing the language in which to write our application's code. Choosing a language presents us with the classic trade-off&mdash;do we choose a language that makes the program easier to write, or do we choose the language that will result in the fastest run-time? Objective-C is able to provide a RAD-like development environment, while retaining its low-level C functionality. This means you can first concentrate on getting your application built, and then worry about making it fast. In many ways, this follows the development of &osx; itself.</para>
+
+<para>As a final point, if you are still struggling with the choice between the ease of Objective-C and the power of C++, worry not. Apple has provided a version of Objective-C that can interact easily with both called Objective-C++. This language version will be presented in more detail in <xref linkend="UHOC:ocpp"/>.</para>
+
+</sect1>
+	
+<sect1>
+	<title>Objective-C Programming in &osx;</title>
+	
+<para>Apple's primary development for environment for Objective-C is <application>Project Builder</application>. This integrated development environment provides all of the traditional graphical tools programmers have come to expect, including editing, class browsing, compiling and debugging. Being Unix, you can imagine that command line tools are not far away either. In fact, the underlying compiler and debugger will, more than likely, be very familiar to you. Finally, the development tools available from Apple include a number of ancillary utilities for handling resources, packaging applications, and profiling applications.</para>
+
+	<sect2>
+		<title><application>Project Builder</application></title>
+	
+<para>I would expect most readers to be intimately familiar with <application>Project Builder</application>, and use it in their day-to-day &osx; application development. There are other options, of course, including Metrowerk's <application>Code Warrior</application>, or for the real hackers among us: <command>emacs</command> or <command>vi</command>, with <command>gcc</command> and <command>gdb</command> from the command line.</para>
+	
+<para>For the rest of us mere mortal programmers, IDEs like Project Builder bring all of the most useful tools together in one place, and provide pre-packaged project templates that isolate us from complex build scripts. In most cases, this is a good thing. The less time you spend debugging <command>make</command> files, the more time you can spend debugging your own code. At the same time, the number of questions regarding missing libraries on the Cocoa mailing lists indicates that many new programmers are so used to IDEs doing all the work, that they may not fully understand what is going on underneath. The next several chapters should hopefully bring you up to speed.</para>
+
+	</sect2>
+	
+	<sect2>
+		<title>The Compiler</title>
+
+<para>Apple provides an excellent development environment for &osx; in <application>Project Builder</application>, especially considering that it is available for free. Under the hood though, everything is running on open source products. This includes the <command>gcc</command> compiler, a debugger <command>gdb</command>, and other miscellaneous tools such as <command>make</command>. As of writing, the latest tool chain delivered with &osx; 10.2 is based on <command>gcc</command> 3.1. <application>Project Builder</application> in &osx; 10.1 used <command>gcc</command> 2.95.2.</para>
+
+<!--??? get latest before publish ??? Prior to this release. 3.3 probably won't go in before 10.3-->
+
+<blockquote>
+<para>If you are moving from &osx; 10.1 to 10.2, with an attendant change in <command>gcc</command> from 2.95.2 to 3.1, there are fundamental changes in certain areas that can make libraries incompatible. In particular, the C++ ABI  was changed for <command>gcc</command> 3.0+, which makes it incompatible with  earlier versions. If you have recently upgraded, and are having problems with a project linking, make sure you clean your project by selecting:
+<menuchoice>
+	<guimenu>Build</guimenu> 
+	<guimenuitem>Clean</guimenuitem>
+</menuchoice>
+from <application>Project Builder</application>'s menu. It is a good idea any  time you upgrade your tools to clean and rebuild your projects.</para>
+</blockquote>
+
+<para>Apple's use of the FSF tools is not a one-way street. Apple has its own developers working on patches and updates to <command>gcc</command>, mostly involving changes to better support &osx; and the PowerPC processor. These updates are fed back into the <command>gcc</command> project. Not all of this code is incorporated into the <quote>official</quote> <command>gcc</command> releases right away, so be sure you check to make sure all the features you are using are available across the platforms in which you might be interested. One example of this lag is in support for Objective-C++. Apple has submitted it for inclusion, but as of version 3.1, the official <command>gcc</command> release does not include Objective-C++ support. You will only be able to find Objective-C++ in Apple's distribution of the tools for the time being.</para>
+
+<para>We will leave <command>gcc</command> for now; however, we will return to it in <olink targetptr="PROC" targetdoc="Processor"/>, where we will take a closer look at how to use its optimization features.</para>
+
+	</sect2>
+	
+	<sect2>
+		<title>Objective-C API's</title>
+
+<para>&osx;'s Objective-C <acronym>API</acronym> is called &cocoa;. &cocoa; is basically the &osx; port of the original &nextstep; API. This is apparent when you see the names assigned to of all the classes, such as <classname>NSString</classname>, <classname>NSWindow</classname> and <classname>NSView</classname>. The NS stands for &nextstep;. NeXT later called this API OpenStep, when it was ported to additional platforms, such as <systemitem class="osname">Solaris</systemitem> and <systemitem class="osname">Windows NT</systemitem>, but kept the NS designator. &osx; continues this tradition.</para>
+
+<para>&cocoa; supports both Objective-C and Java as languages, although it is more traditionally considered an Objective-C based API. The API itself is separated into two frameworks: <classname>Foundation</classname> and <classname>AppKit</classname>. If you <programlisting><![CDATA[#import <Cocoa/Cocoa.h>]]></programlisting>, you are in fact including both frameworks. This is what is known as an <emphasis>Umbrella Framework</emphasis>.</para>
+		
+		<sect3>
+			<title>Foundation Kit</title>
+
+<para><classname>Foundation Kit</classname> is the framework that provides all of the core, non-graphical classes for &cocoa;, as well as many structures and stand-alone functions. Examples of typical <classname>Foundation</classname> classes are <classname>NSSet</classname>, <classname>NSArray</classname> all the way up the hierarchy to <classname>NSObject</classname>. If you want to program at any level, graphical or not, in Objective-C, you must include the <classname>Foundation</classname> framework.</para>
+
+		</sect3>
+	
+		<sect3>
+			<title>AppKit</title>
+
+<para>AppKit is the framework that provides all of the elements necessary for
+creating graphical applications with &cocoa;. Primarily, this means all of the GUI elements, but also includes classes for supporting different kinds of applications, such as single window or document-based.</para>
+
+<para>If you know you will not be referring to <classname>AppKit</classname> classes in a source file, you can save some compile time by only importing the
+Foundation framework. <application>Project Builder</application> does this by default when you select 
+<menuchoice>
+	<guimenu>File</guimenu> 
+	<guimenuitem>New File...</guimenuitem>
+</menuchoice>
+, and choose the <guilabel>Objective-C Class</guilabel> option. These kinds of optimizations are covered in more detail in <olink targetptr="FOUND" targetdoc="Foundations"/></para>
+
+		</sect3>
+		
+		<sect3>
+			<title>CoreFoundation</title>
+<para>Apple is in the unfortunate position of needing to support two developer bases: old Macintosh programmers, and old NeXT programmers. Dealing with this split personality has consumed an amazing amount of programming effort on Apple's part, and generated very heated debates among Macintosh and NeXT devotees. The end result of all this activity is a three pronged approach in &osx;. For existing &os9; and earlier applications, &osx; provides a <quote>Classic</quote> environment in which they can run. If you want your application to run natively, you can either use the more Mac-like Carbon C API, or the NeXT-like Cocoa Objective-C API. Before the client version of &osx; was released, Apple made a fundamental change to both the Carbon and Cocoa implementations. Instead of two entirely separate APIs and attendant libraries, Apple developed a CoreFoundation framework that implements many of the common features of both systems. Carbon and Cocoa can now both call into this common library, allowing Apple to more easily maintain and reuse code between the two APIs (See <xref linkend="UHOC:osx_apis"/>).</para>
+
+<figure id="UHOC:osx_apis"> 
+	<title>Carbon, Cocoa and CoreFoundation</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/objc/figures/osx_apis.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>You can recognize CoreFoundation methods and structures by their <literal>CF*</literal> designation. While CoreFoundation is entirely C-based, its implementation and structures are designed in a very object-oriented-like manner. Many Foundation objects can be directly mapped to their implementations in CoreFoundation. CFDictionary and NSDictionary are a good example of this pairing.</para>
+
+<para>While the source code for Carbon and Cocoa themselves are not available, Apple has decided to redistribute CoreFoundation a part of the underlying Darwin Open Source project. This means all of the source code for CoreFoundation is available for us to study. Because so many of the fundamental data structures we use every day in our applications are implemented here, understanding how they work is important when it comes time to figuring out where performance improvements can be made in our code.</para>
+
+		</sect3>
+
+		<sect3>
+			<title>Cross-platform Objective-C APIs: GNUStep</title>
+
+<para>When talking about cross-platform support for Objective-C we are really
+talking about the NextStep API. Since <command>gcc</command> is available on
+essentially every platform, the Objective-C language and runtime itself
+is also available. Of course, this cross-platform availability does us
+no good if the libraries we use to create our applications are not
+available as well. GNUStep is a project to deliver an open source
+implementation of the OpenStep API that can be run on all the major
+platforms for which <command>gcc</command> is available.</para>
+
+<para>GNUStep is a work in progress. Foundation and Distributed Object support
+exists, and is in very good shape. AppKit support is a little spottier.
+While it is nearly feature complete on UNIX derivatives&mdash;including &osx;
+itself, its Win32 port is somewhat behind the curve. This means, for the
+time being, cross-platform Objective-C programming does not fully
+address Win32, to which unfortunately, is what platform most developers are hoping to port. Hopefully, by the time this reaches bookshelves, the
+situation will be somewhat improved. If you are targeting &osx; and Unix
+platforms only, then GNUStep is able to provide a great cross-platform
+solution. We will return to GNUStep when we develop a cross platform
+distributed application in <olink targetptr="CLUSTER" targetdoc="Clustering"/></para>
+
+		</sect3>
+	</sect2>
+</sect1>
+<sect1>
+	<title>The Objective-C Runtime</title>
+
+<para>Objective-C's ease-of-use, flexibility and power come at a price. As you
+can guess, that price is almost always in performance. Instead of
+calculating class types and function addresses at compile-time,
+Objective-C waits to perform these lookups when they are actually called
+on at run-time. This is unfortunately the same precious time we are
+trying to conserve in our programs. Object-oriented programming is
+foremost a tool to speed the <emphasis>process</emphasis> of programming, not
+necessarily a programs processing speed.</para>
+
+<para>There is room for optimism, however. As we have mentioned before, Objective-C is still C. If you stick with the C in Objective-C, many of the traditional performance techniques apply. When you need to put the petal to the metal, you can always fall back on one of the most efficient languages around. </para>
+
+<para>As soon as you put brackets around something in Objective-C, you intuitively know a whole host of new object-oriented issues must be addressed. These issues can be generally broken down into three broad themes: Object Creation, Message Passing and Object Destruction. This section presents these themes, and shows how consideration of object lifecycle is of paramount importance to high performance object oriented programming. As long as you know what the Objective-C runtime is doing, you can learn how to use it to best effect.</para>
+
+	<sect2>
+		<title>Creating Objects</title>
+
+<para>Given the following trivial class interface:
+
+<programlisting>
+<![CDATA[
+@interface FooBar : NSObject {
+    int foo;
+    int bar;
+}
+- (id)initWithFoo:(int)f bar:(int)b;
+- (int)foo;
+- (void)setFoo:(int)f;
+- (int)bar;
+- (void)setBar:(int)b;
+@end
+]]>
+</programlisting>
+
+Even though you might not know what any particular class or method name of <classname>FooBar</classname> means, you probably won't have any problem reading the following code:</para>
+
+<programlisting>
+<![CDATA[
+FooBar* fooBar = [[FooBar alloc] initWithFoo:21 Bar:12];
+
+NSLog(@"fooBar's Foos:%d Bars:%d", [fooBar foo], [fooBar bar]);
+
+[fooBar setBar:3];
+
+NSLog(@"fooBar's Foos:%d Bars:%d", [fooBar foo], [fooBar bar]);
+
+[fooBar release];
+]]>
+</programlisting>
+
+<para>As Objective-C programmers, we have a good feeling for the syntax of the language. What most Objective-C programmers don't know is what exactly the objects they are throwing around in code actually <emphasis>are</emphasis>. If I present you with the following structure:
+
+<programlisting>
+<![CDATA[
+struct _foo_bar {
+    int foo;
+    int bar;
+} foo_bar;
+]]>
+</programlisting>
+
+you probably have a good feeling for what <varname>foo_bar</varname> looks like in memory. When we create the Objective-C object <varname>fooBar</varname> above, we know we receive a pointer to a memory location, but what does that memory location look like? It turns out that Objective-C objects aren't much different than C's structures. <xref linkend="UHOC:objcreation"/> shows us how both the C structure and Objective-C object are laid out in memory.</para>
+
+<figure id="UHOC:objcreation"> 
+	<title><structname>foo_bar</structname> Versus <classname>FooBar</classname> Memory Layout</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="90" align="center" 
+fileref="./chapters/objc/figures/foobar_memory.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>The only difference between the structure and object in memory is the prefix of the <varname>isa</varname> pointer at the beginning of the memory location. It is this pointer that provides the Objective-C runtime all the information it needs to handle the object. The following code explicitly shows how we can create our own Objective-C object by hand:</para>
+
+<programlisting>
+<![CDATA[
+typedef struct _foo_bar {
+    Class isa;
+    int foo;
+    int bar;
+} foo_bar;
+
+int main (int argc, const char * argv[]) {
+    NSAutoreleasePool * pool = [[NSAutoreleasePool alloc] init];
+
+    // traditionally created object
+    FooBar *fooBar = [[FooBar alloc] initWithFoo:12 bar:21];    
+    
+    // creating our own
+    foo_bar* fb = malloc(sizeof(foo_bar));
+    fb->isa = (Class*)[FooBar class];
+    fb->foo = 6;
+    fb->bar = 2;
+
+
+    // use the alloc'ed FooBar object fooBar
+    NSLog(@"fooBar's Foos:%d Bars:%d", [fooBar foo], [fooBar bar]);
+    [fooBar setBar:3];
+    NSLog(@"fooBar's Foos:%d Bars:%d", [fooBar foo], [fooBar bar]);
+    [fooBar release];
+
+
+    // use our handcrafted foo_bar object fb
+    NSLog(@"fooBar's Foos:%d Bars:%d", [fb foo], [fb bar]);
+    [fb setFoo:62];
+    [fb setBar:26];
+    NSLog(@"fooBar's Foos:%d Bars:%d", [fb foo], [fb bar]);
+    
+    [pool release];
+    return 0;
+}
+]]>
+</programlisting>
+
+<para>In this case, we create a structure foo_bar that explicitly holds our <structname>Class</structname> pointer <varname>isa</varname>, as well as our two <literal>int</literal>s <varname>foo</varname> and <varname>bar</varname>. In order to use our structure, we need to allocate memory for it, which we do using the traditional <function>malloc()</function> system call. We then fill in the structure with a pointer to <classname>FooBar</classname>'s class, as well as initialize the two integer variables. Once we go to the trouble, we can use our made-from-scratch foo_bar just like it was a proper Objective-C object<footnote><para>Ignoring the compiler warnings.</para></footnote>.</para>
+
+<blockquote>
+<para>You might have run across the term <quote>Toll-free Bridging</quote> in reference to structures in the CoreFoundation library that can be freely interchanged with objects in Objective-C code. One example of this kind of object is CFDictionary and NSDictionary. If a CoreFoundation function call requires an object of type CFDictionary, you can pass in an NSDictionary unaltered. You can see why this is easy for the Apple engineers to support&mdash;the C structure is layed out identical to the Objective-C object. The C code merely ignores the <varname>isa</varname> pointer at the beginning.</para>
+</blockquote>
+
+	<sect3>
+		<title>What <varname>isa</varname> Class</title>
+
+<para>Up to this point, we have referred to the FooBar class somewhat cavalierly, even calling <literal>[FooBar class]</literal> without explanation. What <emphasis>is</emphasis> <varname>isa</varname> pointing to? If you look in <filename>/usr/include/objc/objc.h</filename> you will find that <structname>Class</structname> is defined as: <literal>typedef struct objc_class *Class;</literal>. So, <structname>Class</structname> is a pointer to an <structname>objc_class</structname> structure, which is defined in <filename>/usr/include/objc/objc-class.h</filename> as:</para>
+
+<programlisting> 
+<![CDATA[
+struct objc_class { 
+    struct objc_class *isa; 
+    struct objc_class *super_class; 
+    const char *name; 
+    long version;
+
+    long info; 
+    long instance_size; 
+    struct objc_ivar_list *ivars; 
+    struct objc_method_list **methodLists; 
+    struct objc_cache *cache; 
+    struct objc_protocol_list *protocols; 
+}; 
+]]>
+</programlisting>
+
+<para>So, for every class, the Objective-C runtime system creates a <classname>Class</classname> object based on the <structname>objc_class</structname> structure. This structure provides all of the necessary bookkeeping for our instance objects. This bookkeeping includes the class name, a pointer to its superclass, versioning information, as well as pointers to structures holding method and protocol information. <xref linkend="UHOC:objc_class"/> shows the layout of the <structname>objc_class</structname> structure.</para>
+
+<figure id="UHOC:objc_class"> 
+	<title>The <structname>objc_class</structname> Structure</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="65" align="center" 
+fileref="./chapters/objc/figures/objc_class.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>Note that even the Class structure is a proper Objective-C object, holding its own <literal>isa</literal> pointer. For every class, such as <classname>FooBar</classname>, the Objective-C runtime creates a <classname>Class</classname> object. It is this object which responds to the class (as opposed to instance) methods we define.</para>
+
+<para>When you create a class such as:
+<programlisting>
+<![CDATA[
+@interface FooBar : NSObject {
+}
++ fooBarWithFoo:(int)f bar:(int)b;
+@end
+]]>
+</programlisting>
+it is the <classname>FooBar</classname> <classname>Class</classname> object that receives the message when you call:
+<programlisting>
+<![CDATA[
+FooBar *fb = [[FooBar fooBarWithFoo:12 bar:34] retain];
+]]>
+</programlisting>
+</para>
+
+<para>Objective-C keeps track of this object just like every other object in the system, with its own objc_class structure pointed to by <varname>isa</varname>. This <classname>Class</classname> object's <classname>Class</classname> is considered the <emphasis>metaclass</emphasis> for <classname>FooBar</classname>. Just as our <classname>FooBar</classname> <classname>Class</classname> keeps track of <emphasis>instance</emphasis> methods, the <classname>FooBar</classname> metaclass keeps track of <emphasis>class</emphasis> methods. You can see this relationship in <xref linkend="UHOC:objc_classclass"/>.</para>
+
+<figure id="UHOC:objc_classclass"> 
+	<title>Classes and Objects</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="75" align="center" 
+fileref="./chapters/objc/figures/objc_classclass.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para>It is important to press home an often misunderstood detail at this point. For each class, there is only <emphasis>one</emphasis> <classname>Class</classname> object. This single <classname>Class</classname> object is often referred to as a <emphasis>factory</emphasis>. That is, it is a factory that knows how to create objects of a particular type. This notation even turns up in <command>gcc</command> error messages like:</para>
+
+<para><computeroutput>cannot find class (factory) method</computeroutput></para> 
+
+<para>All objects of a specific class type point to the same <classname>Class</classname> (or factory) object through their <varname>isa</varname> member. This emphasizes the difference we mean when we refer to a <emphasis>class</emphasis> versus an <emphasis>object</emphasis>. There is only one <classname>FooBar</classname> <classname>Class</classname>, while there can be any number of <classname>FooBar</classname> objects (See again <xref linkend="UHOC:objc_classclass"/>).</para>
+
+<para>All of this class-level information is contained behind the single <varname>isa</varname> pointer that sits at the beginning of each class, and is maintained by the Objective-C runtime. For creating objects, it is left to <function>alloc</function> and <function>init</function> to prepare the instance variables that make each object unique.</para>
+
+		</sect3>
+		<sect3>
+			<title>Class Information</title>
+			
+<para>The Objective-C runtime maintains a wealth of information about a class in the <structname>objc_class</structname> structure. At the most basic level is data regarding the class name, version, etc.. The following are the declarations for these <structname>objc_class</structname> structure elements:</para>
+
+<programlisting>
+<![CDATA[
+const char *name; 
+long version;
+
+long info; 
+long instance_size; 
+]]>
+</programlisting>
+
+<para>The <varname>name</varname> member is what you would expect&mdash;a c-string representation of the class name as read by the compiler in the original class <literal>@interface</literal> declaration.</para>
+
+<para>Objective-C supports the concept of versioning at the class-level, which is expressed by the existence of a <varname>version</varname> member of the <structname>objc_class</structname> structure. <classname>NSObject</classname> provides a couple class methods for setting the version number of a class called: <function>+setVersion:</function> and <function>+version</function>. <function>+setVersion:</function> is called in the class' <function>+initialize</function> class method:</para>
+
+<programlisting>
+<![CDATA[
++ (void)initialize
+{
+    [Foo setVersion:2];
+}
+]]>
+</programlisting>
+
+<para>Class versioning has typically been used to provide backward compatibility for archiving objects. By using the <function>+version</function> method, un-archiving code can detect the original version of the serialized class, and restore it appropriately.</para>
+
+<para>The <structname>objc_class</structname> <varname>info</varname> variable is used to flag certain class conditions. For the curious, the Flags are defined in <filename>/usr/include/objc/objc-class.h</filename> as:</para>
+
+<programlisting>
+<![CDATA[
+#define CLS_CLASS		0x1L
+#define CLS_META		0x2L
+#define CLS_INITIALIZED		0x4L
+#define CLS_POSING		0x8L
+#define CLS_MAPPED		0x10L
+#define CLS_FLUSH_CACHE		0x20L
+#define CLS_GROW_CACHE		0x40L
+#define CLS_NEED_BIND		0x80L
+#define CLS_METHOD_ARRAY        0x100L
+// the JavaBridge constructs classes with these markers
+#define CLS_JAVA_HYBRID		0x200L
+#define CLS_JAVA_CLASS		0x400L
+// thread-safe +initialize
+#define CLS_INITIALIZING	0x800
+]]>
+</programlisting>
+
+<para>Unless you are hand coding custom classes, or working on the Objective-C runtime, you will probably not have any need for the <varname>info</varname> variable.</para>
+
+<para>The <varname>instance_size</varname> member of the <structname>objc_class</structname> structure holds the number of bytes an instance of the class requires in memory. This size includes the 4 bytes required for the <varname>isa</varname> pointer at the beginning. Given the following classes:</para>
+
+<programlisting>
+<![CDATA[
+@interface Foo : NSObject {
+    int a;
+    double b;
+}
+@end
+
+@interface Bar : Foo {
+    NSString *c;
+}
+@end
+]]>
+</programlisting>
+
+<para>the <varname>instance_size</varname> for <classname>Foo</classname> will hold the value 16&mdash;four bytes for the <classname>Class</classname> pointer <varname>isa</varname>, which is inherited from <classname>NSObject</classname>, four bytes for the <literal>int</literal> <varname>a</varname> and eight bytes for the <literal>double</literal> <varname>b</varname>. The <varname>instance_size</varname> for <classname>Bar</classname> is 20. The size of <classname>Bar</classname> includes the 16 bytes required for <classname>Foo</classname>, plus the additional four bytes for the <classname>NSString</classname> pointer. The <varname>instance_size</varname> variable is inclusive of all superclass requirements.</para>
+		</sect3>
+
+
+		<sect3>
+			<title>Instance Variables</title>
+			
+<para>The <structname>objc_class</structname> structure also keeps track of your class' instance variables in the <structname>objc_ivar_list</structname> structure <varname>ivars</varname>. This structure is declared in <filename>/usr/include/objc/objc-class.h</filename>.</para>		
+
+<programlisting>
+<![CDATA[
+struct objc_ivar_list {
+        int ivar_count;
+#ifdef __alpha__
+        int space;
+#endif
+        struct objc_ivar ivar_list[1];          /* variable length structure */
+};
+]]>
+</programlisting>
+
+<tip><para>Note the use of the <literal>#ifdef __alpha__</literal> conditional construct. This makes sure the <varname>ivar_list</varname> array is aligned on an eight-byte boundary, or 64-bits. We will take a closer look at alignment in <olink targetptr="MEM" targetdoc="Memory"/>.</para>
+</tip>
+
+<para>The <structname>objc_ivar_list</structname> structure holds a variable length array of <structname>objc_ivar</structname> structures:</para>
+
+<programlisting>
+<![CDATA[
+typedef struct objc_ivar *Ivar;
+
+struct objc_ivar {
+        char *ivar_name;
+        char *ivar_type;
+        int ivar_offset;
+#ifdef __alpha__
+        int space;
+#endif
+};
+]]>
+</programlisting>
+
+<para>The <structname>objc_ivar</structname> structure holds information on each instance variable declared in a class' <literal>@interface</literal>. This information includes the variable's name, its type, and its offset within an instantiated class' memory layout. The variable type is encoded as a C-string. For Objective-C types, <xref linkend="ivar_type"/> shows the relevant codes.</para>
+
+<table id="ivar_type">
+	<title><varname>ivar_type</varname> String Values for Objective-C Types</title>
+<tgroup cols="2">
+	<thead>
+		<row><entry>Type</entry><entry>Label</entry></row>
+	</thead>
+	<tbody>
+		<row><entry>void</entry><entry>v</entry></row>
+		<row><entry>char</entry><entry>c</entry></row>
+		<row><entry>unsigned char</entry><entry>c</entry></row>
+		<row><entry>short</entry><entry>s</entry></row>
+		<row><entry>unsigned short</entry><entry>S</entry></row>
+		<row><entry>int</entry><entry>i</entry></row>
+		<row><entry>unsigned int</entry><entry>I</entry></row>
+		<row><entry>long</entry><entry>l</entry></row>
+		<row><entry>unsigned long</entry><entry>L</entry></row>
+		<row><entry>float</entry><entry>f</entry></row>
+		<row><entry>double</entry><entry>d</entry></row>
+		<row><entry>bit field</entry><entry>b</entry></row>
+		<row><entry>pointer</entry><entry>^</entry></row>
+		<row><entry>char*</entry><entry>*</entry></row>
+		<row><entry>id</entry><entry>@</entry></row>
+		<row><entry>Class</entry><entry>#</entry></row>
+		<row><entry>SEL</entry><entry>:</entry></row>
+		<row><entry>IMP</entry><entry>^</entry></row>
+		<row><entry>BOOL</entry><entry>c</entry></row>
+		<row><entry>undefined</entry><entry>?</entry></row>
+	</tbody>
+</tgroup>
+</table>
+
+<para>Pointers are prefaced with a caret (^), so that <literal>void *</literal> would return a type string of <literal>^v</literal>. Objective-C classes are encoded as their full class names. An<classname>NSString</classname> instance variable would return a type of <literal>@"NSString"</literal>.</para>
+
+<para>When presenting type information for structures or unions, the <varname>ivar_type</varname> variable is a little more verbose. The following are the type output for the <structname>NSRect</structname> structure, and a union comprised of and <literal>int</literal> <varname>x</varname> and a <literal>double</literal> <varname>y</varname>:</para>
+
+<programlisting>
+<![CDATA[
+{_NSRect="origin"{_NSPoint="x"f"y"f}"size"{_NSSize="width"f"height"f}}
+(?="x"i"y"d)
+]]>
+</programlisting>	
+
+<sidebar>
+	<title>Class Variables</title>
+<para>If you are familiar with C++, you will probably have run across the use of the <token>static</token> keyword to define class variables.</para>
+
+<para>Objective-C does not have the concept of class variables. Instead, Objective-C uses static variables at <emphasis>file</emphasis> scope to simulate class variables.</para>
+</sidebar>
+
+		</sect3>
+		
+		<sect3>
+			<title><command>class-dump</command></title>
+
+<para>The dynamic nature of Objective-C leads to some interesting
+side-effects. Because the structures of classes, protocols and
+categories are included in a program's object files in human readable form, this
+information is available to anyone wanting to take a look.
+<command>class-dump</command><footnote><para>See <xref linkend="UHOC:resources"/> at the end of this chapter for information on where you can get a copy of <command>class-dump</command></para></footnote>, by
+Steve Nygard, is a useful utility for examining the Objective-C segment
+of Mach-O files. See the section entitled "Mach-O" in <olink targetptr="OSX" targetdoc="OSX"/>
+for more information on the Mach-O file format.</para>
+
+<programlisting>
+<![CDATA[
+class-dump 2.1.5 Usage: 
+class-dump [-a] [-A] [-e] [-R] [-C regex] [-r] [-s] [-S] executable-file 
+
+-a  show instance variable offsets 
+-A  show implementation addresses 
+-e  expand structure (and union) definition whenever possible 
+-R  recursively expand @protocol <> 
+-C  only display classes matching regular expression
+-r  recursively expand frameworks and fixed VM shared libraries 
+-s  convert STR to char * 
+-S  sort protocols, classes, and methods
+]]>
+</programlisting>
+
+<para>here is a small sample of <application>class-dump</application>'s output on <application>Lignarius</application>:</para>
+
+<programlisting>
+<![CDATA[
+@interface CutListController:NSObject {
+	NSTextField *countTextField; 
+	NSTextField *widthTextField; 
+	NSTextField *heightTextField; 
+	NSTextField *depthTextField; 
+	NSPopUpButton *scalePopUpButton; 
+	NSTextField *descriptionTextField; 
+	NSPopUpButton *materialPopUpButton; 
+	NSComboBox *speciesComboBox; 
+	NSPopUpButton *grainPopUpButton; 
+	NSButton *updateButton; 
+	NSButton *deleteButton;
+	NSButton *addButton; 
+	NSTableView *cutListTableView;
+	WoodSelectionController *woodSelection; 
+	NSMutableArray *cutList; 
+}
+- init; 
+- (void)awakeFromNib; 
+- (void)addPiece:fp12; 
+- (void)woodSelectionMaterialChanged:fp12; 
+- (void)woodSelectionSpeciesChanged:fp12; 
+- (void)updatePiece:fp12; 
+- (void)deletePiece:fp12; 
+- (void)clearForm:fp12; 
+- (void)materialSelected:fp12; 
+- (int)numberOfRowsInTableView:fp12; 
+- tableView:fp12 objectValueForTableColumn:fp16 row:(int)fp20; 
+- (void)tableViewSelectionDidChange:fp12; 
+- (void)dealloc;
+
+@end 
+]]>
+</programlisting>
+
+<para>This object is the controller for the window shown in <xref linkend="fig-ligcutlist"/></para>
+
+<figure id="fig-ligcutlist"> 
+	<title><application>Lignarius</application> Cut List Tab</title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="50" align="center" 
+fileref="./chapters/objc/figures/lig_cut_list_tab.tif" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<para><command>class-dump</command> is a handy tool when you want to take a peek at what objects make up an application, and how those objects operate.</para>
+
+		</sect3>
+				
+		<sect3>
+			<title><function>alloc</function></title>
+
+<para>When we subclass <classname>NSObject</classname>, we inherit the <function>alloc</function> and <function>allocWithZone:</function> methods. These are the standard methods that allocate the memory our object needs, and set the <varname>isa</varname> pointer in the object's class structure. For most &cocoa; programming, <function>alloc</function> and <function>allocWithZone</function> are all you will need.</para>
+
+<para>While the default <function>alloc</function> methods we inherit from <classname>NSObject</classname> do their jobs well, they can't make the kind of optimization assumptions we can&mdash;if we have a good idea how our objects will be used. It frequently turns out that object creation (along with object destruction) is one direction we can turn in order to speed up our programs. In <olink targetptr="MEM" targetdoc="Memory"/> we will take a more in depth look at object creation and memory usage by Objective-C objects for optimization purposes.</para>
+		</sect3>
+		
+	</sect2>
+
+	<sect2>
+		<title>Talking to Objects</title>
+		
+<para>Creating objects is not much different than what we have always done in C to manage data structures. The real power of OOP, however, comes from the encapsulation of data behind an interface of well defined methods. While the Objective-C object structure provides the necessary bookkeeping for associating objects with their methods, it is the Objective-C runtime that makes it all possible. Passing a message to an Objective-C object is much different than calling a C function.</para>
+
+<para>Consider the traditional C methodology for calling a function. The following code calls a simple function named <function>foo()</function>:</para>
+
+<programlisting>
+<![CDATA[
+#include "stdio.h"
+
+int foo(int bar)
+{
+    return bar + 12;
+}
+
+int main() {
+    int bar = foo(12);
+    printf("foo:%d\n", bar);
+    return 0;
+}
+]]>
+</programlisting>
+
+<para>We can take a look at the compiled code disassembled in <command>gdb</command> using the following command:</para>
+
+<para><computeroutput><prompt>(gdb)</prompt> <userinput>disass main</userinput></computeroutput></para>
+
+<blockquote>
+<para>While pouring over assembly is becoming an ever rarer occurence in modern day computer programming, it is still useful in optimization and high performance applications. If you are not familiar with using <command>gdb</command> or the PowerPC assembly language, there is an introduction to <command>gdb</command> in <olink targetptr="PROF" targetdoc="Profiling"/> and PowerPC assembly in <olink targetptr="PROC" targetdoc="Processor"/>. Later, we will look more closely at AltiVec assembly in <olink targetptr="BVEC" targetdoc="BasicVector"/> and <olink targetptr="AVEC" targetdoc="AdvancedVector"/>.</para>
+</blockquote>
+
+<para>The following assembly is the first portion of <command>gdb</command>'s dump of the <function>main()</function> routine, right up until the point it calls <function>foo()</function>.</para>
+
+<screen>
+<![CDATA[
+0x1e74 <main>:  mflr    r0
+0x1e78 <main+4>:        stmw    r30,-8(r1)
+0x1e7c <main+8>:        stw     r0,8(r1)
+0x1e80 <main+12>:       stwu    r1,-80(r1)
+0x1e84 <main+16>:       mr      r30,r1
+0x1e88 <main+20>:       bcl-    20,4*cr7+so,0x1e8c <main+24>
+0x1e8c <main+24>:       mflr    r31
+0x1e90 <main+28>:       li      r3,12
+0x1e94 <main+32>:       bl      0x1e48 <foo>
+0x1e98 ...
+]]>
+</screen>
+
+<para>We are interested in the very last line, where <function>foo()</function> is called with <literal>bl 0x1e48</literal>. <function>bl</function> is the PowerPC assembly mnemonic for <emphasis>Branch and Link</emphasis>. This command tells the processor to jump to location <literal>0x1e48</literal> in the program, after saving the next address after the branch code in the <varname>link</varname> register&mdash;in this case <literal>0x1e98</literal>. After the return address is saved, the processor starts executing code at the new address. We can see this in assembler using <computeroutput><prompt>(gdb)</prompt> <userinput>disass foo</userinput></computeroutput>:</para>
+
+<screen>
+<![CDATA[
+0x1e48 <foo>:   stmw    r30,-8(r1)
+0x1e4c <foo+4>: stwu    r1,-48(r1)
+0x1e50 <foo+8>: mr      r30,r1
+0x1e54 <foo+12>:        stw     r3,72(r30)
+0x1e58 <foo+16>:        lwz     r9,72(r30)
+0x1e5c <foo+20>:        addi    r0,r9,12
+0x1e60 <foo+24>:        mr      r3,r0
+0x1e64 <foo+28>:        b       0x1e68 <foo+32>
+0x1e68 <foo+32>:        lwz     r1,0(r1)
+0x1e6c <foo+36>:        lmw     r30,-8(r1)
+0x1e70 <foo+40>:        blr
+]]>
+</screen>
+
+<para>These eleven lines comprise the entirety of the <function>foo()</function> function. Once <function>foo</function> has finished its work, the <function>blr</function>, or <emphasis>Branch to Link Register</emphasis>, command tells the processor to jump back to the address stored in the <varname>link</varname> register. In our case, this is the address <literal>0x1e98</literal>, as stored by <function>main()</function> before calling <function>foo()</function>.</para>
+
+<para>Calling a function in C is as simple as telling the processor where in memory it needs to jump next. There is an additional layer of indirection added when dealing with functions dynamically linked into your application, but the principle is the same. Calling a function in Objective-C is an entirely different proposition. So much so, that we use a different language and syntax when we talk about it. Instead of calling functions, we <emphasis>send messages to objects</emphasis>, and instead of typing <literal>function(arg, ...)</literal> we use <literal>[receiver selector:arg]</literal>.</para>
+
+<para>Under the hood, our fancy Objective-C syntax is turned into an ordinary C function call. You can see this function declared in <filename>/usr/include/objc/objc-runtime.h</filename>:</para>
+
+<programlisting> 
+<![CDATA[
+id objc_msgSend(id self, SEL op, ...); 
+]]>
+</programlisting>
+
+<para><function>objc_msgSend()</function> is the cornerstone to Objective-C's dynamism. It is where much of the visible object oriented behavior we use is implemented. Unlike C, or even C++ for that matter, Objective-C waits until run-time to make many decisions. There are two critical questions for message passing that are decided only at run-time by the call to <function>objc_msgSend()</function>:</para>
+
+<itemizedlist>
+	<listitem><para>Which object should be the receiver of the message?</para>
+	</listitem>
+	<listitem><para>Is the method associated with the selector defined in the object class, one of its superclasses, or an entirely separate category?</para>
+	</listitem>
+</itemizedlist>
+
+<para>Deciding which object should be the receiver is the easiest part. We make this explicit in selecting a receiver for our messages, which is the first token after the open bracket (<literal>[receiver ...]</literal>). The compiler takes the receiver, and uses it as the first argument to <function>objc_msgSend()</function>, named <varname>self</varname><footnote>
+<para><varname>self</varname> in this context seems a little strange, but it makes sense if you think about it. To the class method, the receiver <emphasis>should</emphasis> be <varname>self</varname>.</para></footnote>.</para>
+
+<para>Once we know what object is going to receive the message, figuring out which method to invoke seems like it should be relatively simple&mdash;but it's not. Let's consider the following class hierarchy:</para>
+
+<programlisting>
+<![CDATA[
+// FooBar.m
+
+@implementation FooBar
+
+...
+
+- (NSString*)description
+{
+    return [NSString stringWithFormat:@"Foo: %d, Bar: %d", foo, bar];
+}
+
+@end
+
+// FooBarToo.h
+
+@interface FooBarToo : FooBar {
+}
+@end
+
+// FooBarToo.m
+
+@implementation FooBarToo
+
+...
+
+- (NSString*)description
+{
+    return [NSString stringWithFormat:@"Foo: %d, Bar: %d Too", bar, foo];
+}
+
+@end
+]]>
+</programlisting>
+
+<para><classname>FooBarToo</classname> inherits from <classname>FooBar</classname>, and both override <classname>NSObject</classname>'s <function>description</function> method. Even if we use static typing to reassign a <classname>FooBarToo</classname> object to a <classname>FooBar</classname> pointer, Objective-C's runtime is still smart enough to know we really have a <classname>FooBarToo</classname> on our hands:</para>
+
+<programlisting>
+<![CDATA[
+FooBar *fb = [[FooBar alloc] initWithFoo:12 bar:34];
+FooBarToo *fbt = [[FooBarToo alloc] initWithFoo:12 bar:34];
+    
+FooBar *fooBar = [fbt retain];
+
+NSLog(@"%@", fb);
+NSLog(@"%@", fbt);
+NSLog(@"%@", fooBar);
+]]>
+</programlisting>
+
+<para>results in:</para>
+
+<screen>
+2002-08-27 23:13:21.902 FooBarToo[1207] Foo: 12 Bar: 34
+2002-08-27 23:13:21.915 FooBarToo[1207] Foo: 34 Bar: 12 Too
+2002-08-27 23:13:21.924 FooBarToo[1207] Foo: 34 Bar: 12 Too
+</screen>
+
+<para>This paradigm contrasts with C++, where programmers must explicitly indicate their wish for this behavior by using the <literal>virtual</literal> keyword. Under certain conditions in C++, passing objects by value can even result in sliced objects that loose all but their superclass functionality. C++'s <literal>virtual</literal> keyword makes sure that overridden methods in subclasses are always called, but requires a class developer to explicitly declare methods as <literal>virtual</literal>. In Objective-C <emphasis>all</emphasis> methods are automatically <quote>virtual</quote>.</para>
+
+<para>In order for Objective-C to provide true dynamic messaging, where the right method implementation is called every time, the run-time system must be able to figure out to what selectors an object can respond. Lets take a look at the structure declaration for <structname>objc_class</structname> that we saw in the last section again:</para>
+
+<programlisting> 
+<![CDATA[
+struct objc_class { 
+    struct objc_class *isa; 
+    struct objc_class *super_class; 
+    const char *name; 
+    long version;
+
+    long info; 
+    long instance_size; 
+    struct objc_ivar_list *ivars; 
+    struct objc_method_list **methodLists; 
+    struct objc_cache *cache; 
+    struct objc_protocol_list *protocols; 
+}; 
+]]>
+</programlisting>
+
+<para>In addition to the basic information that tells the system about the class, such as its name, version and size, the <structname>objc_class</structname> structure also holds several pointers to structures that allow the Objective-C runtime to pass messages to the correct method implementation. The primary structure that makes this possible is the <varname>methodLists</varname> pointer. <varname>methodLists</varname> is in fact a pointer to an array of <structname>objc_method_list</structname> structures<footnote><para>The double pointer is C shorthand for a pointer to an array of objects, like <literal>char **argv</literal> versus <literal>char *argv[]</literal></para></footnote>. The Objective-C runtime uses this pointer to an array of structures because it cannot know in advance how many methods a class might have.</para>
+
+<para>Unlike languages such as C++ or Java, Objective-C allows programmers to extend class functionality on-the-fly using <emphasis>categories</emphasis>. Catagories allow programmers to add methods to a class without subclassing, so they do not exist in the normal chain of inheritance. Each time a category is loaded&mdash;whether at application startup, or dynamically when loading a bundle&mdash;the Objective-C runtime will add that category's new methods to the class' <varname>methodLists</varname> variable as an additional <structname>objc_method_list</structname> structure. That structure is defined as:</para>
+
+<programlisting>
+<![CDATA[
+typedef struct objc_method *Method;
+
+struct objc_method {
+        SEL method_name;
+        char *method_types;
+        IMP method_imp;
+};
+
+struct objc_method_list {
+        struct objc_method_list *obsolete;
+
+        int method_count;
+#ifdef __alpha__
+        int space;
+#endif
+        struct objc_method method_list[1];      /* variable length structure */
+};
+]]>
+</programlisting>
+
+<para>Every <structname>objc_method_list</structname> structure holds an array of <structname>objc_method</structname> structures, each of which contains three elements: <varname>method_name</varname>, <varname>method_types</varname>, and <varname>method_imp</varname>.</para>
+
+<para>The <varname>method_name</varname> entry in <structname>objc_method</structname> is of type <literal>SEL</literal>, which is defined in <filename>/usr/include/objc/objc.h</filename> as:</para>
+
+<programlisting>
+<![CDATA[
+typedef struct objc_selector 	*SEL;    
+]]>
+</programlisting>
+
+<para>Underneath, the selector of a method is defined as a C-string holding the name of the message itself. For example, the selector for <classname>NSObject</classname>'s method <function>- (BOOL)isMemberOfClass:(Class)aClass</function> is <quote>isMemberOfClass:</quote>. You are undoubtedly familiar with the Objective-C compiler macro <literal>@selector()</literal>, used to generate <literal>SEL</literal>s from literal method names. For example, if you have an <classname>NSArray</classname> of <classname>NSPorts</classname>s, and wanted to invalidate all of the receivers, you could use:</para>
+
+<programlisting>
+<![CDATA[
+[portArray makeObjectsPerformSelector:@selector(invalidate)];
+]]>
+</programlisting>
+
+<para>Even though <classname>NSArray</classname> knows little about the objects it stores, it does know one critical piece of information: each object should be a subclass of <classname>NSObject</classname><footnote><para>Technically, you could implement your own root class that is not derived from NSObject; however, making any objects that were derived from this root class work with the rest of the Foundation or AppKit frameworks would be time consuming. In addition to <function>performSelector:</function>, there are many methods implemented by NSObject that are used by the Objective-C runtime and standard libraries that would require duplication.</para></footnote>. Knowing this, <classname>NSArray</classname> is able to use <classname>NSObject</classname>'s <function>performSelector:</function> method to forward the <function>invalidate</function> message.</para>
+
+<para>Once the Objective-C runtime has a selector, it can use the <structname>objc_method</structname> structure to match a method name with its implementation. The <varname>method_imp</varname> entry in <structname>objc_method</structname> stores the actual implementation location of the method. <varname>method_imp</varname> is of type <literal>IMP</literal>, which is defined in <filename>/usr/include/objc/objc.h</filename> as a function pointer returning an <literal>id</literal>:</para>
+
+<programlisting>
+<![CDATA[
+typedef id (*IMP)(id, SEL, ...);
+]]>
+</programlisting>
+
+<para>The <varname>method_types</varname> variable, like the <varname>ivar_type</varname> variable in <structname>objc_class</structname>, stores information about the types used in the method call. The layout of the C-string is identical to the <literal>IMP</literal> declaration above. That is, first the return type is presented, then the receiving object type&mdash;which in our case is always an <literal>id</literal>, then the selector type and finally the arguments. Each of these type values is followed by an offset number. An example entry for <classname>NSObject</classname>'s method <function>- (BOOL)isMemberOfClass:(Class)aClass</function> would be <literal>c0@4:8#12</literal>. <literal>c</literal> is the <literal>BOOL</literal> return type. <literal>@</literal> represents the type of the receiver, again, always an <literal>id</literal>. <literal>:</literal> is the type of the selector, which is always <literal>SEL</literal>. <literal>#</literal> is the type of the first and only argument: <classname>Class</classname>. <varname>method_types</varname> uses the same character codes presented in <xref linkend="ivar_type"/> that are used for determining instance variable type.</para>
+
+<para>Whenever you pass a message to a class, the Objective-C runtime must match the message you wish to send with the method implementation by which it is implemented. This means the runtime needs to search through every <structname>method_list</structname> in an object's <classname>Class</classname> looking for just the right method. <classname>NSObject</classname> alone has 16 <structname>method_list</structname> structures containing a total of 114 methods! This list is generated by Objective-C from the class itself, plus all of its attendant categories.</para>
+
+<para>Luckily, the Objective-C runtime does not have to search the entire <structname>method_list</structname> tree every time it needs to send a message. Instead, the runtime keeps track of all messages it has passed to a class in <structname>objc_class</structname>'s <structname>objc_cache</structname>  variable called appropriately: <varname>cache</varname>. The penalty for looking up a method is only incurred the first time it is invoked. Thereafter,  <function>objc_msgSend()</function> will find the method in the class' method cache. <xref linkend="UHOC:objc_msgsend"/> provides a diagram of how the <function>objc_msgSend()</function> decides which method implementation should receive a message.</para>
+
+
+<figure id="UHOC:objc_msgsend"> 
+	<title>Sending a Message With <function>objc_msgSend()</function></title>
+	<mediaobject>
+	<imageobject>
+	<imagedata scale="90" align="center" 
+fileref="./chapters/objc/figures/objc_msgsend.pdf" format="EPS"/>
+	</imageobject>
+	</mediaobject>
+</figure>
+
+<sidebar>
+	<title>Static Typing Versus id</title>
+<para>In Objective-C we can refer to objects as either <literal>id</literal>, or as pointers to their respective types (e.g. <literal>NSString*</literal>). Using these pointers in your code is referred to as <emphasis>Static Typing</emphasis>. Static typing can be used by the compiler to check whether you are using your objects properly. For example, the compiler can tell you when you are passing the wrong kind of object as an argument in a selector, or trying to use a selector to which an object does not respond.</para>
+
+<para>There has been some debate in newsgroups and message boards about whether static typing in Objective-C has any impact on <emphasis>run-time</emphasis> performance. In every case, the consensus was that the purported boost in speed from using static typing was a placebo effect. Using static typing when writing programs only provides compile-time type safety.</para>
+
+<para>Why <emphasis>couldn't</emphasis> <command>gcc</command> use static typing to shortcut the run-time system's dynamic dispatch by linking straight to the method implementation? Unfortunately, this would break the expected behavior of inheritance. While we might declare an object to be of a static type&mdash;say <classname>NSButton*</classname>, what we are really saying is the object is of type <classname>NSButton</classname>, <emphasis>or any of its subclasses</emphasis>. It is not until runtime that we may definitively know which actual instance method will get called.</para>
+</sidebar>
+
+		<sect3>
+			<title>KeyValue Coding</title>
+<para>Objective-C has been described as a verbose language. It does not shy away from long lines of descriptive code. What is lacks in brevity, it makes up for in flexibility. One area where Objective-C's open object implementation is used to good effect is in the <classname>NSKeyValueCoding</classname> protocol:</para>
+
+<programlisting>
+<![CDATA[ 
+@interface NSObject (NSKeyValueCoding)
+
+- (id)valueForKey:(NSString *)key; 
+- (void)takeValue:(id)value forKey:(NSString *)key; 
+- (id)storedValueForKey:(NSString *)key; 
+- (void)takeStoredValue:(id)value forKey:(NSString *)key; 
++ (BOOL)accessInstanceVariablesDirectly; 
++ (BOOL)useStoredAccessor;
+
+@end 
+]]>
+</programlisting>
+<para>All classes derived from NSObject automatically inherit an implementation of the <classname>NSKeyValueCoding</classname> protocol, which allows programmers to access the instance variables of a class using a string-based key. You don't have to know in advance what all of a class' instance variable's names might be. the <function>-valueForKey:</function> and <function>-takeValue:forKey:</function> methods are able to take a string holding the name of a class' instance variable, and get or set that variable's value.</para>
+
+<para>The default implementation actually tries several ways at pulling this off:</para>
+
+<orderedlist>
+<listitem><para>Given a key named <varname>key</varname>, look for accessor methods named <function>-setKey:</function>, <function>-key</function> or <function>-getKey</function>.</para></listitem>
+<listitem><para>If any of those methods are not available, the implementation will look for the above method names with leading underscores:<function>-_setKey:</function>, <function>-_key</function> or <function>-_getKey</function></para></listitem>
+<listitem><para>If there are no accessor methods, the implementation will look directly for instance variables named either <varname>key</varname> or <varname>_key</varname>.</para></listitem>
+<listitem><para>If none of the above work, the <classname>NSKeyValueCoding</classname> implementation will give the class a chance to handle the unbound key, or throw an exception.</para></listitem>
+</orderedlist>
+
+<para>The <classname>NSKeyValueCoding</classname> implementation is able to accomplish all of this using the information made available through the <structname>objc_class</structname> structure and supporting functions.</para>
+
+		</sect3>
+		<sect3>
+			<title>Optimizing with <literal>IMP</literal>s</title>
+
+<para>Even with caching, the Objective-C runtime must still perform a lookup each time a message needs to be sent to an object. In most situations, this added level of indirection is negligible. However, there are certain situations in which you might want to bypass Objective-C's dynamic dispatch for a faster, static approach. Consider the following method from <application>Lignarius</application>'s <classname>RRGGOptimizer</classname> class:</para>
+
+<programlisting>
+<![CDATA[
+- (void)optimize
+{
+    BOOL finished = NO;
+    
+    // zero out the structures
+    [rectangleValues removeAllObjects];
+    [verticalCuts removeAllObjects];
+    [horizontalCuts removeAllObjects];
+    [self setValue:0 forSize:stockSize];
+
+    first.width = wStepping;
+    first.height = hStepping;
+    second.width = wStepping;
+    second.height = hStepping;
+    
+
+    [self findVerticalCut];
+    [self findHorizontalCut];
+
+
+    while(!finished) {
+        while(second.width < stockSize.width) {
+            second.width += wStepping;
+            [self findVerticalCut];
+            [self findHorizontalCut];
+        }
+        if(second.height < stockSize.height) {
+            second.height += hStepping;
+            second.width = wStepping;
+            [self findVerticalCut];
+            [self findHorizontalCut];
+        } else {
+            finished = YES;
+        }
+    }
+}
+]]>
+</programlisting>
+
+<para>When looking for an optimal layout for a given set of parts and stock material, this is the method that kicks it all off. You may notice that there are a couple Objective-C messages called within the main loop that comprise the bulk of this method's computation.</para>
+
+<para><function>-findVerticalCut</function> and <function>-findHorizontalCut</function> are deep in the nested loops, and depending on the size of the stock cutting problem, selectors could be sent thousands of times. Each time, the Objective-C runtime system must follow the steps outlined in <xref linkend="UHOC:objc_msgsend"/> to find the proper method implementation. An important optimization we can make is to perform this implementation lookup outside of our loop beforehand. By caching the location of the implementation, we can call the implementation directly, thus bypassing the costly lookup every time through the loop.</para>
+
+<para>Recall that the definition of <literal>IMP</literal> is:</para>
+
+<programlisting>
+<![CDATA[
+typedef id (*IMP)(id, SEL, ...);
+]]>
+</programlisting>
+
+<para>In other words, a pointer to a function returning <structname>id</structname>. While we could trudge through the <structname>objc_class</structname> structure in order to find a method's associated <literal>IMP</literal>, <classname>NSObject</classname> provides a handy method for obtaining the <literal>IMP</literal> from a selector. Given an Objective-C class instance method returning <structname>id</structname>, we would grab a method's implementation by calling:</para>
+
+<programlisting>
+<![CDATA[
+- (IMP)methodForSelector:(SEL)aSelector
+]]>
+</programlisting>
+
+<para>Once we have a method's implementation pointer, we can call it like any traditional C function pointer. Consider the following method from <classname>NSDictionary</classname>:</para>
+
+<programlisting>
+<![CDATA[
+- (id)objectForKey:(id)key;
+]]>
+</programlisting>
+
+<para>We could call this method using its <literal>IMP</literal> as follows:</para>
+
+<programlisting>
+<![CDATA[
+IMP objectForKeyIMP = 
+    [dict methodForSelector:@selector(@"objectForKey:")];
+    
+while(...) {
+    object = objectForKeyIMP(dict, @selector(@"objectForKey:"), key);
+    ...
+}
+]]>
+</programlisting>
+
+<para>Unfortunately, not all methods match the <literal>IMP</literal> typedef. In the case of <function>findVerticalCut</function> and <function>findHorizontalCut</function> our method returns <literal>void</literal>. In these cases, you must make your own function pointer, and cast the return of <function>methodForSelector</function> like:</para>
+
+<programlisting>
+<![CDATA[
+void (*findVerticalCutIMP)(id, SEL);
+findVerticalCutIMP = (void (*)(id, SEL))[self 
+    methodForSelector:@selector(@"findVerticalCut")];
+]]>
+</programlisting>
+
+<para>Our <function>optimize</function> method, without the use of Objective-C messaging, now looks like:</para>
+
+<programlisting>
+<![CDATA[
+- (void)optimize
+{
+    // ...
+    void (*findVerticalCutIMP)(id, SEL);
+    void (*findHorizontalCutIMP)(id, SEL);
+    
+    findVerticalCutIMP = (void (*)(id, SEL))[self 
+                         methodForSelector:@selector(@"findVerticalCut")];    
+    
+    findHorizontalCutIMP = (void (*)(id, SEL))[self 
+                         methodForSelector:@selector(@"findVerticalCut")];
+                         
+    findVerticalCutIMP(self, @selector(@"findVerticalCut"));
+    findHorizontallCutIMP(self, @selector(@"findHorizontalCut"));
+
+
+    while(!finished) {
+        while(second.width < stockSize.width) {
+            second.width += wStepping;
+            findVerticalCutIMP(self, @selector(@"findVerticalCut"));
+            findHorizontallCutIMP(self, @selector(@"findHorizontalCut"));
+        }
+        if(second.height < stockSize.height) {
+            second.height += hStepping;
+            second.width = wStepping;
+            findVerticalCutIMP(self, @selector(@"findVerticalCut"));
+            findHorizontallCutIMP(self, @selector(@"findHorizontalCut"));
+        } else {
+            finished = YES;
+        }
+    }
+}
+]]>
+</programlisting>
+
+<para>We have now eliminated any Objective-C message passing from the main loop of the <function>optimize</function> routine. This does not, however, guarantee that there are no messages being sent from within the <function>findVerticalCut</function> and <function>findHorizontalCut</function> methods themselves.</para>
+
+<para>This technique is obviously not necessary every time we need to send a message to an Objective-C object. What are the right times to use it then? If the following two conditions are met, your implementation may benefit from this optimization:</para>
+
+<orderedlist>
+<listitem><para>You are sending many messages to an object in a tight loop.</para></listitem>
+<listitem><para>The object itself is not changing in a way that would alter the location to which the <literal>IMP</literal> was pointing.</para></listitem>
+</orderedlist>
+
+<para>Given the above, it is important to remember that you need to be sending many hundreds or thousands of messages in repetition to an object for this technique to make a noticeable difference.</para> 
+
+<para>This technique will also not work if there is a chance for the <literal>IMP</literal> to change. Imagine a situation where you have a list of <classname>Shape</classname> objects to which you want to send the message <function>-area</function>. If those objects are all each actually subclasses of type <classname>Rectangle</classname>, <classname>Circle</classname>, etc., that override the <function>-area</function> method, you won't know beforehand which method implementation you will need to call for any particular object. <classname>Rectangle</classname> objects will want to use their <function>-area</function> implementation and <classname>Circle</classname> objects will want to use their's. Be wary if you are only holding pointers to superclass objects and wanting to use the <literal>IMP</literal> invocation optimization.</para>
+
+		</sect3>
+		
+
+	</sect2>
+	
+	<sect2>
+		<title>Destroying Objects</title>
+
+<para>We have talked about how objects are creating in Objective-C, as well as how they are used. The final stage in an object's lifecycle is its destruction. The act of destruction itself is not that difficult to understand&mdash;when you are done with an object, remove its instance from memory. It is determining when you are done with an object that turns out to be a more than trivial task. Objective-C, through the <classname>NSObject</classname> class solves the problem of knowing when to send objects to the great bit-bucket in the sky using a technique known as reference counting.</para>
+
+<para>In traditional C programming, dynamic memory allocation using <function>malloc()</function> must be paired with an equal number of <function>free()</function>s. This memory management pattern, while conceptually simple, is in practice not easy to get right. This is especially true when calling system-level routines or third party libraries where you may not have the original source code. If you are handed a block of memory through a pointer, is it your responsibility to free it, or will the system? What if you then pass it on to a third library, is that library going to release it out from under you? Ultimately, the malloc/free pattern does not address the issue of memory lifetime and ownership itself. It is only through careful coordination between software developers that leaks can be avoided.</para>
+
+<para>This confusion over memory "ownership" is especially confusing when dealing with encapsulated objects. Different object oriented languages have tried dealing with this problem in many ways. The two most popular methods for managing memory are reference counting (RC) and garbage collection (GC). Of the two methods, RC is conceptually the simplest. When you are given an object that you want to hold beyond the current scope, you increment a <emphasis>reference count</emphasis> variable associated with the object. When you are finished with the object you decrement the reference count. If the count falls to zero, the system knows no one else is interested in the object, and releases it.</para>
+
+<para>GC has been around for a long time, but was popularized by the Java programming language. GC starts with the same principle as RC, but automates the process. Reference counts are automatically incremented and decremented by the runtime as objects come into and go out of scope. When an object's reference count falls to zero, the object is automatically destroyed. GC allows programmers to by and large avoid issues of memory management. Java's GC implementation is a significant part of what makes Java such an easy language for new programmers. The biggest complaint leveled against GC is that it can be slow. The overhead of keeping track of these references in the runtime system imposes a penalty on the entire application.</para>
+
+		<sect3>
+			<title>Objective-C Reference Counting</title>
+			
+<para>The Objective-C language itself doesn't specify a memory management technique inasmuch as it leaves this detail to library developers. The root class for all objects in the Foundation and AppKit libraries, <classname>NSObject</classname>, uses reference counting. You are probably already familiar with the rules for memory management in Cocoa. You are only responsible for releasing an object if you have done one of the following:</para>			
+
+<orderedlist>
+<listitem><para>allocated and initialized an object</para></listitem>
+<listitem><para>retained an object</para></listitem>
+<listitem><para>copied an object</para></listitem>
+</orderedlist>
+
+<para>You are not responsible for releasing any other objects, no matter how you might have come to hold a reference to that object.</para>
+		</sect3>
+		
+		<sect3>
+			<title>Autorelease Pools</title>
+
+<para>While reference counting alone works well, autorelease pools provide an additional level of automation in memory management by automatically releasing objects when their reference count falls to zero. Autorelease pools can be viewed as an attempt at giving reference counting some of the ease-of-use of garbage collecting.</para>
+
+<para>By sending <function>-autorelease</function> to an object, you place it in the current autorelease pool. At the end of the current event loop, or when the autorelease pool itself is released, it goes through the list of its objects and checks to see if any object's reference count is zero. If it finds an object with no references, it sends the <function>-release</function> message to that object. Just as with garbage collection, there is an additional overhead when using autorelease pools in your code. judicious use of autorelease pools can be an important optimization technique.</para>
+			
+<para>Reference counting, autorelease pools  and general memory management in Objective-C will be covered in much more detail in <olink targetptr="MEM" targetdoc="Memory"/>.</para>
+		</sect3>
+
+	</sect2>
+
+</sect1>
+
+
+
+<sect1 id="UHOC:resources">
+	<title>Resources</title>
+
+<variablelist>
+	<title>Resources</title>
+	
+	<varlistentry><term><command>class-dump</command></term>
+	<listitem><para>
+	<ulink url="http://www.omnigroup.com/$\sim$nygard/Projects/"/>
+	</para></listitem>
+	</varlistentry>
+		
+	<varlistentry><term>The Objective-C Programming Language</term>
+	<listitem><para>
+	<ulink 
+url="file:///Developer/Documentation/Cocoa/ObjectiveC/ObjC.pdf"/>
+	</para></listitem>
+	</varlistentry>	
+
+
+	<varlistentry><term>Objective-C++ Release Notes</term>
+	<listitem><para>
+	<ulink 
+url="file:///Developer/Documentation/ReleaseNotes/Objective-C++.html"/>
+	</para></listitem>
+	</varlistentry>	
+</variablelist>
+
+</sect1>
+
+</chapter>

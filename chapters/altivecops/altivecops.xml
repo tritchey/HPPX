@@ -1,0 +1,491 @@
+<chapter id="AO">
+	<title>AltiVec Operations</title>
+
+<sect1>
+	<title>Conversion Operations</title>
+
+<variablelist>
+<varlistentry>
+	<term><function>vec_ctf</function></term>
+	<listitem><para>convert from fixed-point word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_cts</term>
+	<listitem><para>convert to signed fixed-point word saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_ctu</term>
+	<listitem><para>convert to unsigned fixed-point word saturated</para></listitem>
+</varlistentry>
+</variablelist>
+
+
+<variablelist>
+	<title>Mathematical Operations</title>
+<varlistentry>
+	<term>vec_abs</term>
+	<listitem><para>absolute value</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_abss</term>
+	<listitem><para>absolute value saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_add</term>
+	<listitem><para>add</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_addc</term>
+	<listitem><para>add carryout unsigned word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_adds</term>
+	<listitem><para>add saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_avg</term>
+	<listitem><para>average</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_ceil</term>
+	<listitem><para>ceiling</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_expte</term>
+	<listitem><para>2 raised to the exponent esimate floating-point</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_floor</term>
+	<listitem><para>floor</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_loge</term>
+	<listitem><para>$log_2$ estimate floating-point</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_madd</term>
+	<listitem><para>multiply add</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_madds</term>
+	<listitem><para>multiply add saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mladd</term>
+	<listitem><para>mulitply low and add unsigned half word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mradds</term>
+	<listitem><para>mulitply round and add saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_msum</term>
+	<listitem><para>multiply sum</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_msums</term>
+	<listitem><para>multiply sum saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mule</term>
+	<listitem><para>multiply even</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mulo</term>
+	<listitem><para>multiply odd</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_nmsub</term>
+	<listitem><para>negative multilpy subtract</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_re</term>
+	<listitem><para>reciprocal estimate</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_round</term>
+	<listitem><para>round</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_rsqrte</term>
+	<listitem><para>reciprocal square root estimate</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sub</term>
+	<listitem><para>subtract</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_subc</term>
+	<listitem><para>subtract carryout</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_subs</term>
+	<listitem><para>subtract saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sum4s</term>
+	<listitem><para>sum across partial (1/4) saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sum2s</term>
+	<listitem><para>sum across partial (1/2) saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sums</term>
+	<listitem><para>sum saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_trunc</term>
+	<listitem><para>truncate</para></listitem>
+</varlistentry>
+</variablelist>
+
+
+
+<variablelist>
+	<title>Logical, Comparitor and Permutation Operations</title>
+<varlistentry>
+	<term>vec_and</term>
+	<listitem><para>AND</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_andc</term>
+	<listitem><para>AND with complement</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_nor</term>
+	<listitem><para>NOR</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_or</term>
+	<listitem><para>OR</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_xor</term>
+	<listitem><para>XOR</para></listitem>
+</varlistentry>
+</variablelist>
+
+<variablelist>
+<varlistentry>
+	<term>vec_cmpb</term>
+	<listitem><para>compare bounds floating-point</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_cmpeq</term>
+	<listitem><para>compate equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_cmpge</term>
+	<listitem><para>compare greater than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_cmpgt</term>
+	<listitem><para>compare greater than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_cmple</term>
+	<listitem><para>compare less than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_cmplt</term>
+	<listitem><para>compare less than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_max</term>
+	<listitem><para>maximum</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_min</term>
+	<listitem><para>minimum</para></listitem>
+</varlistentry>
+</variablelist>
+
+<variablelist>
+<varlistentry>
+	<term>vec_all_eq</term>
+	<listitem><para>all elements equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_ge</term>
+	<listitem><para>all elements greater than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_gt</term>
+	<listitem><para>all elements greater than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_in</term>
+	<listitem><para>all elements in bounds</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_le</term>
+	<listitem><para>all elements less than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_lt</term>
+	<listitem><para>all elements less than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_nan</term>
+	<listitem><para>all elements not a number</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_ne</term>
+	<listitem><para>all elements not equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_nge</term>
+	<listitem><para>all elements not greater than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_ngt</term>
+	<listitem><para>all elements not greater than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_nle</term>
+	<listitem><para>all elements not less than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_nlt</term>
+	<listitem><para>all elements not less than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_all_numeric</term>
+	<listitem><para>all elements numeric</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_eq</term>
+	<listitem><para>any element equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_ge</term>
+	<listitem><para>any element greater than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_gt</term>
+	<listitem><para>any element greater than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_le</term>
+	<listitem><para>any element less than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_lt</term>
+	<listitem><para>any element less than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_nan</term>
+	<listitem><para>any element not a number</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_ne</term>
+	<listitem><para>any element not equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_nge</term>
+	<listitem><para>any element not greater than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_ngt</term>
+	<listitem><para>any element not greater than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_nle</term>
+	<listitem><para>any element not less than or equal</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_nlt</term>
+	<listitem><para>any element not less than</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_numeric</term>
+	<listitem><para>any element numeric</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_any_out</term>
+	<listitem><para>any element out of bounds</para></listitem>
+</varlistentry>
+</variablelist>
+
+
+<variablelist>
+	<title>Permutation Operations</title>
+<varlistentry>
+	<term>vec_mergeh</term>
+	<listitem><para>merge high</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mergel</term>
+	<listitem><para>merge low</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_pack</term>
+	<listitem><para>pack</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_packpx</term>
+	<listitem><para>pack pixel</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_packs</term>
+	<listitem><para>pack saturated</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_packsu</term>
+	<listitem><para>pack saturated unsigned</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_perm</term>
+	<listitem><para>permute</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_rl</term>
+	<listitem><para>rotate left</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sel</term>
+	<listitem><para>select</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sl</term>
+	<listitem><para>shift left</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sld</term>
+	<listitem><para>shift left double</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sll</term>
+	<listitem><para>shift left long</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_slo</term>
+	<listitem><para>shift left by octet</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat</term>
+	<listitem><para>splat</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat_s8</term>
+	<listitem><para>splat signed byte</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat_s16</term>
+	<listitem><para>splat signed half word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat_s32</term>
+	<listitem><para>splat signed word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat_u8</term>
+	<listitem><para>splat unsigned byte</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat_u16</term>
+	<listitem><para>splat unsigned half word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_splat_u32</term>
+	<listitem><para>splat unsigned word</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sr</term>
+	<listitem><para>shift right</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sra</term>
+	<listitem><para>shift right algebraic</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_srl</term>
+	<listitem><para>shift right long</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_sro</term>
+	<listitem><para>shift right octet</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_unpackh</term>
+	<listitem><para>unpack high element</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_unpackl</term>
+	<listitem><para>unpack low element</para></listitem>
+</varlistentry>
+</variablelist>
+
+<variablelist>
+	<title>Memory Operations</title>
+<varlistentry>
+	<term>vec_dss</term>
+	<listitem><para>data stream stop</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_dssall</term>
+	<listitem><para>data stream stop all</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_dst</term>
+	<listitem><para>data stream touch</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_dstst</term>
+	<listitem><para>data stream touch for store</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_dststt</term>
+	<listitem><para>data stream touch for store transient</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_dstt</term>
+	<listitem><para>data stream touch transient</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_ld</term>
+	<listitem><para>load indexed</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_lde</term>
+	<listitem><para>load element indexed</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_ldl</term>
+	<listitem><para>load indexed LRU</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_lvsl</term>
+	<listitem><para>load for shift left</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_lvsr</term>
+	<listitem><para>load for shift right</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mfvscr</term>
+	<listitem><para>move from vector status and control register</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_mtvscr</term>
+	<listitem><para>move to vector status and control register</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_st</term>
+	<listitem><para>store indexed</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_ste</term>
+	<listitem><para>store element indexed</para></listitem>
+</varlistentry>
+<varlistentry>
+	<term>vec_stl</term>
+	<listitem><para>store indexed LRU</para></listitem>
+</varlistentry>
+</variablelist>
+
+</sect1>
+
+
+</chapter>

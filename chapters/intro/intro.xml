@@ -1,0 +1,39 @@
+<chapter> 
+	<title>High Performance Programming and OSX</title>
+
+<para>It took Apple a long time, and the purchase of an ex-founder's company
+to do it, but they finally have a cutting-edge operating system running
+on their hardware. At the core of OS X is a very old technology--Unix.
+OS X's combination of advanced features and Unix underpinning has
+brought many developers to the Apple platform. In fact, it is very easy
+for a programmer to bring their existing Unix bag of tricks to the OS X
+table and be very productive.</para>
+
+<para>what does this do for them though? They would be missing out on some
+great technology like: obj-c, DO, Cocoa, Quartz, Mach. so, that is what this 
+book aims to cover.</para>
+
+<para>We are taught to code first, then profile, then optimize. This leaves out the critical step of program design, which can have just as much, or more impact on the <emphasis>ultimate</emphasis> speed our program is able to achieve. By not thinking about performance at all, we risk creating a program that is unable to achieve its goals.</para>
+
+<para>It is important to strike the right balance.</para>
+
+
+<sect1>
+	<title>Design</title>
+	<para>foo</para>
+
+</sect1>
+
+<sect1>
+	<title>Profiling</title>
+	<para>foo</para>
+
+</sect1>
+
+<sect1>
+	<title>Optimization</title>
+	<para>foo</para>
+
+</sect1>
+
+</chapter>

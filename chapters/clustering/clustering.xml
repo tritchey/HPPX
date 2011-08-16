@@ -1,0 +1,73 @@
+<chapter id="CLUSTER">
+	<title>Clustering</title>
+
+<sect1>
+	<title>Why Cluster?</title>
+<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Distributed Applications</title>
+<para>On 10.1 you cannot use the dotted-number IP address format - you need
+to use a FQDN.</para>
+	
+<para>	It sounds like your object is getting dealloced and then you attempt to
+access it later.  Try running with the following environment variables set:
+
+NSZombieEnabled = YES
+NSAutoreleaseFreedObjectCheckEnabled = YES
+
+You should see the code complaining if you attempt to access a dealloced
+object.
+</para>
+	
+<para>	The docs for -[NSRunLoop run] state "If there are no input sources in the run loop, it exits immediately".  So, removing your port from the run loop should cause it to stop running.</para>
+
+<para>If you remove all runloop sources from a run loop, it will automatically exit.
+</para>
+
+<para>
+On Wednesday, August 14, 2002, at 06:15 , Brian Webster wrote:
+
+The docs for -[NSRunLoop run] state "If there are no input sources in the run loop, it exits immediately".  So, removing your port from the run loop should cause it to stop running.
+
+Yes, that is what I read too. So, I tried this but I must be doing something wrong, because it does not work.
+
+Well, you have to remember that you are not the only client of the run loop.  The libraries you link with may put sources of their own in the run loop.  This is one of the strengths of the run loop model, where the list of sources to be waited upon is managed independently of the actual blocking for events, and different parts of a program can operate with event handling independently of each other.
+
+If you want the run loop to terminate, you shouldn't use the run-forever convenience method, -run.  Instead, use one of the other run methods and also check other arbitrary conditions of your own, in a loop.  A simple example would be:
+<programlisting>
+<![CDATA[
+	BOOL shouldKeepRunning = YES;		// global
+
+	NSRunLoop *theRL = [NSRunLoop currentRunLoop];
+	while (shouldKeepRunning && [theRL runBeforeDate:[NSDate distantFuture]);
+]]>
+</programlisting>
+
+where shouldKeepRunning is set to NO somewhere else in the program.
+</para>
+
+</sect1>
+
+<sect1>
+	<title>Remote Ports: NSSocketPort</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Finding Objects Out on the Network</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Mixing Local and Remote Port Connections</title>
+	<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Applying Patterns for Distributed Computing</title>
+	<para>todo</para>
+</sect1>
+	
+</chapter>

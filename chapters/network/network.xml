@@ -1,0 +1,126 @@
+<chapter id="NETWORK">
+	<title>Network</title>
+
+<sect1>
+	<title>Looking at Network Usage</title>
+		<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Traditional Socket Programming</title>
+		<para>todo</para>
+		<para>talk about different socket implementations: SimpleSocket EDNetworking?, OmniNetworking, CFSocket.</para>
+
+<para>
+Hi, I'm having a trouble with efficiency in SmallSockets. My problem occurs with a latency in when text arrives and the speed in which I can process it. Currently I'm developing a text-based game client which connects to a game server via a simple TCP/IP connection. My problem is that when I go to read from the socket, I first have to put the data from the socket into a NSData, read from the NSData into a NSString, then insert the NSString into a NSTextView. Under heavy load (10-20 lines/second) this seems to become very bogged down, taking a few seconds to 'catch up' to where the current status is. Here's my current working code, the function is run on a seperate Thread:
+<programlisting>
+<![CDATA[
+    while([mySocket isConnected])
+    {
+        if([mySocket isReadable])
+        {
+            [mySocket readData: myData];
+            while([myData containsString: @"\n"])
+            {
+                line = [[NSString alloc] initWithData: [myData getBytesUpToString: @"\n"] encoding: NSUTF8StringEncoding];
+                [mainText setEditable: YES];
+                [mainText insertText: line];
+                [mainText setEditable: NO];
+                [line release];
+                [mainText moveToEndOfDocument:mainText];
+                [mainText scrollRangeToVisible:[mainText selectedRange]];
+            }
+        }
+        else
+        {
+            [NSThread sleepUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        }
+    }
+]]>
+</programlisting>
+A couple observations:
+
+(1) Don't sleep after the read, just use blocking mode (which is the default) to wait for data to arrive rather than calling isReadable. Use an NS_DURING/NS_HANDLER block to catch disconnection and other exceptions. If you're running your network code in a separate thread as you indicate (and as you should), this is much more efficient; the sleepUntilDate call is probably contributing substantially to your performance problems.
+
+(2) Make sure to reserve enough space in myData  (using dataWithCapacity: or initWithCapacity:) to avoid it having to resize during readData.
+
+(3) You may have problems modifying the NSTextView in a thread other than the main UI thread. You should consider using something like Toby Paterson's InterThreadMessaging or other code to pass the NSData to the main thread.
+
+(4) You should insert text into the view by manipulating the NSTextView's textStorage object directly, rather than using insertText. See NSTextStorage for more info (and the key point to remember is that NSTextStorage is a subclass of NSMutableString).
+
+(5) If your data is already text, you can probably just stuff the whole thing into the text storage at once, unless there's some reason you need to first split it into separate lines as you show in your while() loop--but I'm not sure what you may be doing to the incoming text.
+
+Hope this helps,
+</para>
+
+<para>There are many different interprocess communication mechanisms available to you on Mac OS X.  Here are a few of them, roughly in increasing order of layering:  Mach ports, sockets, CFMachPort, CFSocket, CFMessagePort, distributed notifications, AppleEvents, NSMachPort, NSSocketPort, NSMessagePort, distributed objects.
+
+For broadcast local-machine communications, the natural choice would be distributed notifications.  For connection-oriented communications between Cocoa apps, the natural choice would be distributed objects.  You can find both of these documented on developer.apple.com, but here is a page that is particularly on point for system preferences:
+
+http://developer.apple.com/techpubs/macosx/AdditionalTechnologies/PreferencePanes/Tasks/Communication.html
+
+Douglas Davidson
+</para>
+
+</sect1>
+
+<sect1>
+	<title>Security: SSL</title>
+		<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Distributed Objects</title>
+		<para>todo</para>
+		<para>
+<programlisting>
+<![CDATA[
+		Thanks very much.  Given this example, I was able to find an earlier 
+message from Chris Kane at apple (2/24/01) showing the same approach.  I 
+tried it this way, and it works.  The only downside is it appears you 
+have to know the host where the server is located ahead of time 
+(i.e. "*" does not seem to work for hostname).  But that's much better 
+than it not working at all.
+
+To sum up for anyone else looking through the archives in the future, DO 
+and NSConnection work on the network (OSX), but currently you have to 
+set up the port manually as this example shows.
+
+Mike Giddings
+
+On Thursday, June 21, 2001, at 08:35 PM, Larry Campbell wrote:
+
+> I believe you have to construct a port from an NSSocket. Here's a 
+> couple of snippets of code I wrote a while back that I know worked.
+>
+> Server:
+>
+>     NSSocketPort *port = [[NSSocketPort alloc] 
+> initWithTCPPort:SERVER_PORT];
+>     NSConnection *theConnection = [NSConnection 
+> connectionWithReceivePort:port sendPort:nil];
+>
+> Client:
+>
+>     NSSocketPort *port = [[NSSocketPort alloc] 
+> initRemoteWithTCPPort:SERVER_PORT host:@"172.24.81.250"];
+>     NSConnection *connection = [NSConnection 
+> connectionWithReceivePort:nil sendPort:port];
+>
+>
+]]>
+</programlisting>
+</para>
+</sect1>
+
+<sect1>
+	<title>The Distributed Object Lifecycle</title>
+		<para>todo</para>
+</sect1>
+
+<sect1>
+	<title>Protocol Design Consideration</title>
+		<para>todo</para>
+</sect1>
+
+</chapter>
